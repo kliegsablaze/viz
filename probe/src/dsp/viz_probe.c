@@ -35,11 +35,11 @@
 #define FRAME_BLOCKS 11       /* ~31 fps pattern updates */
 
 enum {
-    T_OFF, T_WALK, T_EDGE, T_PAL1, T_PAL2, T_WHITE, T_WHITE_EDGE, T_FLOOD,
+    T_OFF, T_WALK, T_EDGE, T_PAL1, T_PAL2, T_WHITE, T_WHITE_EDGE, T_WHITE_ALL, T_FLOOD,
     T_SYSEX_RGB, T_SYSEX_PAL, T_BEAT, T_COUNT
 };
 static const char *k_test_names[T_COUNT] = {
-    "Off", "Walk", "Edge", "Palette 1", "Palette 2", "White Pads", "White Edge", "Flood",
+    "Off", "Walk", "Edge", "Palette 1", "Palette 2", "White Pads", "White Edge", "White All", "Flood",
     "SysEx RGB", "SysEx Palette", "Beat"
 };
 
@@ -393,6 +393,9 @@ static void pattern(inst_t *s, double beat) {
         fill(s, 0, 64, 0, C_OFF);
         fill(s, 64, NLIGHT, 0, k_greys[s->level & 7]);
         break;
+    case T_WHITE_ALL: /* power: all 96 lights at one grey step */
+        fill(s, 0, NLIGHT, 0, k_greys[s->level & 7]);
+        break;
     case T_FLOOD: /* every light changes colour every block: the throughput test */
         {
             uint8_t c = k_hues[t % 8];
@@ -542,7 +545,7 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
     if (!strcmp(key, "chain_params"))
         return snprintf(buf, len,
             "[{\"key\":\"test\",\"name\":\"Test pattern\",\"short_name\":\"TEST\",\"type\":\"enum\","
-            "\"options\":[\"Off\",\"Walk\",\"Edge\",\"Palette 1\",\"Palette 2\",\"White Pads\",\"White Edge\",\"Flood\","
+            "\"options\":[\"Off\",\"Walk\",\"Edge\",\"Palette 1\",\"Palette 2\",\"White Pads\",\"White Edge\",\"White All\",\"Flood\","
             "\"SysEx RGB\",\"SysEx Palette\",\"Beat\"],\"default\":\"Walk\"},"
             "{\"key\":\"level\",\"name\":\"White level\",\"short_name\":\"LEVEL\",\"type\":\"int\","
             "\"min\":0,\"max\":7,\"default\":4},"
