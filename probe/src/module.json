@@ -1,0 +1,17 @@
+{
+  "id": "viz-probe",
+  "name": "Viz Probe",
+  "abbrev": "VZPB",
+  "version": "0.0.1",
+  "dsp": "viz-probe.so",
+  "api_version": 2,
+  "component_type": "audio_fx",
+  "description": "Test only: drives a Matrix on USB-A with test patterns and measures what gets through.",
+  "capabilities": {
+    "audio_in": true,
+    "audio_out": true,
+    "chainable": true,
+    "component_type": "audio_fx",
+    "requires_continuous_processing": true
+  }
+}
