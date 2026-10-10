@@ -69,6 +69,9 @@ static uint8_t light_note(int id) {
 #define C_BLUE   85
 #define C_PINK   105
 #define C_WHITE  127
+static const char *k_pace_names[] = { "100", "200", "400", "700", "1000", "1500", "2000", "Max" };
+static const double k_pace_rate[] = { 100, 200, 400, 700, 1000, 1500, 2000, 1e9 };
+#define PACE_COUNT 8
 static const uint8_t k_greys[8] = { 0, 121, 122, 123, 124, 125, 126, 127 };
 static const uint8_t k_hues[8]  = { 5, 15, 25, 35, 45, 65, 85, 105 };
 
@@ -78,7 +81,9 @@ typedef struct {
     /* settings */
     int      test;
     int      level;      /* 0..7: grey step for White */
-    int      budget;     /* packets per block */
+    int      budget;     /* most packets in one block */
+    int      pace;       /* index into k_pace_names: packets per second cap */
+    double   credit;     /* packets allowed so far by the pace */
     int      nudge_ms;
     /* lights */
     light_t  want[NLIGHT];
@@ -208,14 +213,14 @@ static void write_report(inst_t *s) {
     double n = s->m_frames > 0 ? (double)s->m_frames : 1;
     double rl = sqrt(s->m_sumsq_l / n) / 32768.0, rr = sqrt(s->m_sumsq_r / n) / 32768.0;
     fprintf(f,
-        "test %s (budget %d, level %d, nudge %d ms)\n"
+        "test %s (budget %d, pace %s/s, level %d, nudge %d ms)\n"
         "packets: attempted %ld accepted %ld refused %ld\n"
         "blocks %ld, blocks with a refusal %ld, most accepted in one block %d\n"
         "input over the last 2 s: rms L %.1f dBFS R %.1f dBFS, peak %d\n"
         "beat position %.3f, bpm %.2f, time signature %d/%d, beats seen %ld\n"
         "midi to this Master FX: internal %ld [%02x %02x %02x], external %ld [%02x %02x %02x], host %ld\n"
         "bench: 32x32 warped fbm %.3f ms/frame, 16x16 fluid step %.3f ms/frame\n",
-        k_test_names[s->test], s->budget, s->level, s->nudge_ms,
+        k_test_names[s->test], s->budget, k_pace_names[s->pace], s->level, s->nudge_ms,
         s->m_attempt, s->m_accept, s->m_refuse,
         s->m_blocks, s->m_refuse_blocks, s->m_max_block_accept,
         rl > 0 ? 20 * log10(rl) : -999.0, rr > 0 ? 20 * log10(rr) : -999.0, s->m_peak,
@@ -225,8 +230,8 @@ static void write_report(inst_t *s) {
         s->m_midi[3],
         s->bench_ms_noise, s->bench_ms_fluid);
     fclose(f);
-    logf_("viz-probe: %s acc %ld ref %ld max/blk %d rms %.1f beat %.2f midi i%ld e%ld",
-          k_test_names[s->test], s->m_accept, s->m_refuse, s->m_max_block_accept,
+    logf_("viz-probe: %s pace %s acc %ld ref %ld max/blk %d rms %.1f beat %.2f midi i%ld e%ld",
+          k_test_names[s->test], k_pace_names[s->pace], s->m_accept, s->m_refuse, s->m_max_block_accept,
           rl > 0 ? 20 * log10(rl) : -999.0, s->m_beat, s->m_midi[0], s->m_midi[2]);
     /* the level window restarts; packet counters are per test */
     s->m_sumsq_l = s->m_sumsq_r = 0; s->m_frames = 0; s->m_peak = 0;
@@ -265,12 +270,20 @@ static void sysex_queue(inst_t *s, const uint8_t *b, int n) {
  * A refused packet is never recorded as shown. */
 static void pump(inst_t *s) {
     int sent = 0, refused = 0;
-    while (sent < s->budget && s->sx_pos < s->sx_len) {
+    double per_block = k_pace_rate[s->pace] * MOVE_FRAMES_PER_BLOCK / SR;
+    /* Even spacing: never bank more than one block's worth, so a slow pace
+     * is a steady trickle rather than bursts of eight. */
+    double cap = ceil(per_block) < s->budget ? ceil(per_block) : s->budget;
+    s->credit += per_block;
+    if (s->credit > cap) s->credit = cap;
+    int allow = (int)s->credit;
+    if (allow > s->budget) allow = s->budget;
+    while (sent < allow && s->sx_pos < s->sx_len) {
         s->m_attempt++;
         if (!send_pkt(s->sx[s->sx_pos])) { refused = 1; s->m_refuse++; break; }
         s->sx_pos++; sent++; s->m_accept++;
     }
-    for (int k = 0; k < NLIGHT && sent < s->budget && !refused; k++) {
+    for (int k = 0; k < NLIGHT && sent < allow && !refused; k++) {
         int id = (s->cursor + k) % NLIGHT;
         light_t w = s->want[id];
         if (s->known[id] && s->shown[id].ch == w.ch && s->shown[id].idx == w.idx) continue;
@@ -281,6 +294,7 @@ static void pump(inst_t *s) {
         s->shown[id] = w; s->known[id] = 1; sent++; s->m_accept++;
         s->cursor = (id + 1) % NLIGHT;
     }
+    s->credit -= sent;
     s->m_blocks++;
     if (refused) s->m_refuse_blocks++;
     if (sent > s->m_max_block_accept) s->m_max_block_accept = sent;
@@ -440,6 +454,7 @@ static void *v2_create_instance(const char *module_dir, const char *config_json)
     inst_t *s = calloc(1, sizeof *s);
     if (!s) return NULL;
     s->level = 4;
+    s->pace = 2;  /* 400/s until the probe finds the Matrix's limit */
     reset_test(s, T_WALK);
 
     pthread_attr_t a;
@@ -506,6 +521,8 @@ static void v2_set_param(void *inst, const char *key, const char *val) {
         if (t != s->test) reset_test(s, t);
     } else if (!strcmp(key, "level")) {
         int v = atoi(val); s->level = v < 0 ? 0 : v > 7 ? 7 : v;
+    } else if (!strcmp(key, "pace")) {
+        s->pace = parse_enum(val, k_pace_names, PACE_COUNT);
     } else if (!strcmp(key, "nudge")) {
         int v = atoi(val); s->nudge_ms = v < -200 ? -200 : v > 200 ? 200 : v;
     }
@@ -516,6 +533,7 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
     if (!strcmp(key, "test")) return snprintf(buf, len, "%s", k_test_names[s->test]);
     if (!strcmp(key, "level")) return snprintf(buf, len, "%d", s->level);
     if (!strcmp(key, "nudge")) return snprintf(buf, len, "%d", s->nudge_ms);
+    if (!strcmp(key, "pace")) return snprintf(buf, len, "%s", k_pace_names[s->pace]);
     if (!strcmp(key, "chain_params"))
         return snprintf(buf, len,
             "[{\"key\":\"test\",\"name\":\"Test pattern\",\"short_name\":\"TEST\",\"type\":\"enum\","
@@ -524,16 +542,18 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
             "{\"key\":\"level\",\"name\":\"White level\",\"short_name\":\"LEVEL\",\"type\":\"int\","
             "\"min\":0,\"max\":7,\"default\":4},"
             "{\"key\":\"nudge\",\"name\":\"Beat nudge (ms)\",\"short_name\":\"NUDGE\",\"type\":\"int\","
-            "\"min\":-200,\"max\":200,\"default\":0,\"step\":5}]");
+            "\"min\":-200,\"max\":200,\"default\":0,\"step\":5},"
+            "{\"key\":\"pace\",\"name\":\"Messages per second\",\"short_name\":\"SPEED\",\"type\":\"enum\","
+            "\"options\":[\"100\",\"200\",\"400\",\"700\",\"1000\",\"1500\",\"2000\",\"Max\"],\"default\":\"400\"}]");
     if (!strcmp(key, "ui_hierarchy"))
         return snprintf(buf, len,
             "{\"modes\":null,\"levels\":{\"root\":{\"label\":\"Viz Probe\","
-            "\"knobs\":[\"test\",\"level\",\"nudge\"],"
-            "\"params\":[{\"key\":\"test\",\"label\":\"Test\"},{\"key\":\"level\",\"label\":\"Level\"},"
+            "\"knobs\":[\"test\",\"pace\",\"level\",\"nudge\"],"
+            "\"params\":[{\"key\":\"test\",\"label\":\"Test\"},{\"key\":\"pace\",\"label\":\"Speed\"},{\"key\":\"level\",\"label\":\"Level\"},"
             "{\"key\":\"nudge\",\"label\":\"Nudge\"}]}}}");
     if (!strcmp(key, "state"))
-        return snprintf(buf, len, "{\"test\":\"%s\",\"level\":%d,\"nudge\":%d}",
-                        k_test_names[s->test], s->level, s->nudge_ms);
+        return snprintf(buf, len, "{\"test\":\"%s\",\"pace\":\"%s\",\"level\":%d,\"nudge\":%d}",
+                        k_test_names[s->test], k_pace_names[s->pace], s->level, s->nudge_ms);
     if (len > 0) buf[0] = '\0';
     return 0;
 }

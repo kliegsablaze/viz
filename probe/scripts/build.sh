@@ -11,6 +11,10 @@ cp src/module.json dist/viz-probe/
 if [ "${1:-}" = "--install" ]; then
     D=/data/UserData/schwung/modules/audio_fx/viz-probe
     ssh ableton@move.local "mkdir -p $D"
-    scp -q dist/viz-probe/* "ableton@move.local:$D/"
+    # Copy beside, then rename: overwriting a loaded .so in place rewrites
+    # code the running Move has mapped.
+    ssh ableton@move.local "mkdir -p $D/.new"
+    scp -q dist/viz-probe/* "ableton@move.local:$D/.new/"
+    ssh ableton@move.local "cd $D && for f in .new/*; do mv -f \"\$f\" .; done && rmdir .new"
     echo "installed to $D"
 fi
