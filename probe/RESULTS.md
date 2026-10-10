@@ -78,8 +78,50 @@ That opens up:
 
 The built-in palettes are now the fallback.
 
-## Still to run
+## Clock sync — works
 
-Beat (sync and NUDGE), Move→Schwung on/off. Render bench so far: a 32x32 domain-warped fbm field is
-0.44–0.47 ms per frame, and a 16x16 fluid step is 0.07 ms, on the worker thread. Far
+Beat test at 120 BPM: 735 beats counted from `get_beat_position()`, and the red downbeat
+landed on beat 1 (time signature 4/4 from `move_info`).
+
+**NUDGE −40 ms** looked right to the user: lights driven straight off the clock are about
+40 ms ahead of the sound heard. Viz's default NUDGE is −40.
+
+At 2,000 packets/s, some pads stayed dark on each whole-grid flash. A flash changes all 96
+lights, which takes ~48 ms at that rate, while the flash lasts ~87 ms in three steps; pads
+late in the queue miss it. **Whole-grid changes go as SysEx `5E` index 0 (fill all), about 4
+packets**, instead of 96 notes. To verify in the next probe run.
+
+## What a Master FX hears — Move's tracks, with Move→Schwung OFF
+
+| Time | Move→Schwung | Playing | Probe input |
+|---|---|---|---|
+| 23:34:32 | switched **OFF** | — | — |
+| 23:34:37–23:35:40 | off | a Move drum clip | **−12 to −15 dBFS, continuous** |
+| 23:35:44 → | off | stopped | silence |
+| 23:36:25 | switched on | stopped | — |
+
+Earlier, with Move→Schwung on and **only the metronome** playing, the probe heard silence,
+broken by bursts (probably hand-played pads). That is correct: Schwung adds its metronome
+after Master FX.
+
+**So the Master FX buffer carries Move's own tracks without Move→Schwung.** That contradicts
+the host note (CLAUDE.md "Gain Staging", which describes Master FX as Schwung-only). It
+agrees with Loom's master-fx probe recording Move's mix. Viz's Sound mode needs no setting.
+Untested: drums plus Move→Schwung on (expected to work too).
+
+## Move's own MIDI out paints the Matrix
+
+With a drum clip playing, the bottom-left pads (notes 36–38) lit purple in time with the
+drums. Move sends its track notes out of USB-A, and the Performance app paints them.
+Consequences:
+- Viz must **repaint lights it didn't set**: a periodic refresh that marks every light dirty,
+  not just one row.
+- help.json should say to turn off Move's MIDI output to USB-A for a clean picture.
+- Later idea: those notes say exactly what's playing, and could feed the scenes. They can't
+  reach a Master FX today, so this is out of scope.
+
+## Render bench
+
+A 32x32 domain-warped fbm field is
+0.44–0.49 ms per frame, and a 16x16 fluid step is 0.07 ms, on the worker thread. Far
 under budget.

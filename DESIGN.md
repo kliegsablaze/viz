@@ -4,11 +4,17 @@
 abstract and organic: they breathe with the beat, listen to the mix, and keep changing over a
 whole song.*
 
-**Status:** design only, 2026-10-10. No code yet. It was written against Schwung **v1.7.3**
-(the newest release on that date) and Matrix OS commit **e1a4c08** (2026-09-25). Nothing here
-has run on a device. The facts about the Matrix were read from its source; the facts about
-the host were read from Schwung's source and its measured notes. Every claim that still
-needs a device is marked **(probe)**.
+**Status:** design, with the device probe done (2026-10-10). No Viz code yet. Written against
+Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's Matrix runs Matrix
+OS **3.2**.
+
+The facts about the Matrix were read from its source, and the facts about the host from
+Schwung's source. The probe (`probe/`, results in [probe/RESULTS.md](probe/RESULTS.md)) then
+checked them on the user's Move and Matrix. **Three of the design's assumptions turned out
+wrong, and the design now follows the measurements:**
+- full-colour SysEx **does** reach the Matrix;
+- the Master FX **does** hear Move's own tracks without Move→Schwung;
+- the Move's USB-A port **cannot** power the whole Matrix brightly.
 
 - **Module ID:** `viz`
 - **Component type:** `audio_fx`, loaded in the **Master FX** row
@@ -127,9 +133,9 @@ commit e1a4c08). The Matrix Pro is the `Mystrix1` device family, variants V100/V
   them not in the Matrix palette.
 - **Channels 3–6:** four custom palettes, uploadable by SysEx (see below).
 
-Viz uses **both channel 1 and channel 2**. The union of the two palettes is about 250
-distinct colours, nearly double the shades available to a gradient, at no cost: the
-channel nibble is free.
+Viz's main path is full RGB by SysEx (below). Its **note fallback** uses both channel 1 and
+channel 2: the union of the two palettes is about 250 distinct colours, nearly double the
+shades available to a gradient, at no cost, because the channel nibble is free.
 
 ### Which note is which pad
 
@@ -154,7 +160,7 @@ side:
 | Bottom | 116–123 |
 | Top    | 28–35   |
 
-### Full colour exists, but probably can't reach it
+### Full colour: SysEx, and it reaches the Matrix
 
 The Performance app also understands three SysEx messages. Each one starts with the header
 `F0 00 02 03 4D 58` (`OS/MIDI/MIDI.h:8-9`), which `ProcessSysEx` (`OS/MIDI/MIDI.cpp`) hands
@@ -168,37 +174,54 @@ on to the app:
   (`:375-404`). Only `41 7D` saves it to flash (`:405-416`). **Viz never sends `41 7D`**,
   so there is no flash wear, and a power cycle restores the user's own palettes.
 
-The obstacle is the Matrix's USB descriptor. It is a composite device (MIDI + serial + HID)
-with **two MIDI ports** (`OS/USB/TinyUSB/usb_desc_default.cpp:106-149`). Schwung measured
-that **Move's USB-A host cannot exchange SysEx with a multi-port USB-MIDI device**: notes
-and CCs get through, SysEx never takes effect, and nothing the device sends comes back
-(`schwung/docs/E16_REMOTE.md:113-127`).
+The Apollo index also reaches the underglow. `ApplyApolloIndex` maps idx 1–8 and 91–98 to
+the bottom and top rows outside the grid, and idx 10/20…80 and 19/29…89 to the left and
+right columns (`.cpp:203-233`). So one message format covers all 96 lights.
 
-So the design assumes **notes only**, and treats SysEx as a bonus the probe may find.
+The Matrix is a composite USB device (MIDI + serial + HID) with **two MIDI ports**
+(`OS/USB/TinyUSB/usb_desc_default.cpp:106-149`). Schwung had measured that Move's USB-A
+cannot exchange SysEx with a multi-port device (`schwung/docs/E16_REMOTE.md:113-127`). **The
+Matrix is an exception, measured:** both `5E` (a rainbow) and `41 3D` (a custom gradient)
+took effect, and the Matrix's own notes reach the Move (probe Tests 7–8, RESULTS.md).
+
+So **full colour is Viz's main path** (see *The light engine*). Plain notes on the built-in
+palettes are the fallback.
 
 ### Other Matrix behaviour that matters
 
 - The app drains at most 64 MIDI packets per loop (`Performance8x8.h:44`), and its LEDs
-  refresh at 120 fps (`Devices/Mystrix1/MatrixOSConfig.h:28`). Viz's own rate limit is far
-  below both.
+  refresh at 120 fps (`Devices/Mystrix1/MatrixOSConfig.h:28`). The probe ran it at up to
+  ~6,900 packets/s with no freeze and no loss.
 - **Flicker reduction** ("stfu") delays a note-off by one LED frame (`.cpp:131-148`). This is
   harmless for Viz.
 - Pressing a Matrix pad **sends a note** (`.cpp:108`), and the Fn key sends CC 121/123
-  (`:121-127`). Because of the multi-port limit, these probably never reach the Move
-  **(probe)**. If they do, Move would play them on whatever track listens to external MIDI.
-  0.2.0 decides then whether Viz should use them (for example, a touch nudges the
-  scene). Until then they are ignored.
-- The Matrix asks the USB host for **500 mA** (`usb_desc_default.cpp:146`). Whether Move's
-  USB-A port supplies that with every LED near white is the probe's first question. The
-  `LIGHT` setting doubles as a power guard.
+  (`:121-127`). **These reach the Move and play its selected track** (channel 1, measured).
+  Master FX don't receive USB-A input (`shadow_midi.c:1040-1169`), so Viz can't use or
+  swallow them. help.json says that touching the Matrix plays the Move.
+- **Move's own MIDI out paints the Matrix.** With a drum clip playing, the bottom-left pads
+  (notes 36–38) lit up in time with the drums: Move sends its track notes out of USB-A.
+  Viz therefore **repaints every light regularly**, not only changed ones (see *Sending*),
+  and help.json suggests turning off Move's MIDI output to USB-A.
+- **Connecting can fail silently.** On the first plug-in, neither direction worked. A replug
+  fixed it. There is no hotplug signal on USB-A, so Viz can't detect it; help.json says
+  "if the Matrix stays dark, replug it".
+- **Power is the real limit.** The Matrix asks for 500 mA (`usb_desc_default.cpp:146`), and
+  the Move's USB-A port can't supply what a brightly lit Matrix draws. Too much light makes
+  pads drop out, then the Matrix locks up (Fn dead) until it is replugged. Measured:
+  - at the Matrix's **minimum** brightness, all 96 lights at full white is safe;
+  - at **maximum** brightness, all 96 at `#6D6D6D` is safe and at `#919191` it freezes.
+
+  Viz has a **power guard** (see *The light engine*) calibrated to the worst case, so it is
+  safe whatever the Matrix's brightness. A powered USB hub lifts the limit (POWER setting).
 
 ### Setting up the Matrix
 
-1. Connect the Matrix's USB-C to the Move's USB-A.
-2. On the Matrix, open **Performance** (the red app).
+1. Connect the Matrix's USB-C to the Move's USB-A, directly or through a powered USB hub.
+2. On the Matrix, open **Performance** (the red app). If nothing responds later, replug.
 3. Optional: turn on its **Menu Lock**, so a stray Fn press doesn't open the menu over the
    show.
-4. Load Viz into a Master FX position.
+4. Optional: turn off Move's MIDI output to USB-A, so Move's notes don't paint the pads.
+5. Load Viz into a Master FX position.
 
 ---
 
@@ -211,23 +234,23 @@ frames)` processes in place, stereo interleaved int16, 128 frames at 44.1 kHz
 (`src/host/audio_fx_api_v2.h:19-32`; `plugin_api_v1.h:119-120`). Viz reads the buffer and
 never writes it.
 
-**What a Master FX hears depends on a Schwung setting.** Normally the Master FX buffer holds
-only Schwung's own audio: the slot instruments, at unity. Move's own tracks are added after
-it (`schwung_shim.c:3570-3580`, `:3745-3747`, `:3775-3784`; CLAUDE.md "Gain Staging").
-Only with **Move→Schwung** (Link Audio rebuild, `rebuild_from_la`, `schwung_shim.c:2994-2997`)
-does the Master FX run on the whole mix.
+**What a Master FX hears: Move's tracks, with no setting needed.** Schwung's notes describe
+the Master FX buffer as Schwung's own audio only, with Move's tracks added afterwards unless
+Move→Schwung (Link Audio rebuild) is on (CLAUDE.md "Gain Staging"; `schwung_shim.c:3570-3580`,
+`:3745-3747`, `:2994-2997`). **The probe measured otherwise.** With Move→Schwung switched
+**off**, a Move drum clip reached the probe at −12 to −15 dBFS for the whole minute it played,
+and silence followed when it stopped (RESULTS.md, "What a Master FX hears"). Loom's
+Master FX probe had already recorded Move's mix on this device.
 
-So:
-
-- **Move playing:** the clock drives Viz whatever the setting. Sync always works.
-- **Sound-led pictures of Move's own tracks** need **Move→Schwung on**. Without it, Viz still
-  hears every Schwung instrument.
-- `help.json` and the manual entry say this in one plain sentence.
+So Viz's sound-led pictures work with **no setting**. Two details:
+- **The metronome is invisible to Viz:** Schwung adds its click after Master FX. That is
+  correct; nobody wants the show to pulse to the click.
+- **Untested:** drums with Move→Schwung on. Loom suggests it works too; the first device pass
+  of 0.1.0 confirms it.
 
 **Rejected: a Tool.** Loom proved that a Tool with `capabilities.end_of_chain` hears the
-whole final mix with no setting, and keeps running after Back. The user wanted Viz to live
-where effects live, so Master FX it is. If Move→Schwung turns out to be a burden in
-practice, a Tool build of the same engine is the fallback, not a redesign.
+whole final mix and keeps running after Back. The user wanted Viz to live where effects
+live, and the measurement above removes the one reason to doubt that choice.
 
 ---
 
@@ -475,23 +498,39 @@ device's deadline (`plugin_api_v1.h:29-104`). So:
   field. With EDGE set to Breathe, the beat drives it.
 - **Values to colour:** value → COLOR gradient → linear RGB → LIGHT and gamma.
 
-### Colour: about 250 shades from two palettes
+### Colour: full RGB by SysEx
 
-Each pad's linear RGB is converted to **OKLab** and looked up in a precomputed 32x32x32 LUT
-(built in `create_instance`). The LUT answers with the nearest colour across the **union of
-palette 1 and palette 2**, plus which channel carries it. The two palettes are hard-coded
-copies of `Performance8x8.h:93-355`.
+The probe showed that SysEx reaches the Matrix, so **every light gets its own colour**:
+6 bits per channel (262,144 colours), with no palette in the way. That is what makes
+dissolves, drifting palettes and soft glows possible, since none of them fit a fixed set of
+128 colours.
 
-- Palette 1 alone gives each hue four brightness steps. Adding palette 2's in-between hues,
-  greys and dusky tones roughly doubles the usable gradient steps.
-- **SHADE Fine** adds **temporal dithering**. When a pad's true colour falls between two
-  palette entries, Viz sends them alternately, carrying the error from frame to frame, so
-  the eye averages them. It is only offered at RATE 45 or 60 (lower rates flicker), and off
-  by default, because a dithering pad changes every frame and costs bandwidth.
-- **If the probe finds SysEx works:** Viz uploads the current scene's gradient as a
-  **128-step custom palette** on channel 3 (`41 3D`, RAM only, never `41 7D`), and pads index
-  into it. That gives smooth fades with plain notes. It is re-uploaded only when COLOR
-  changes, or once per bar as the palette drifts.
+- **Pipeline:** linear RGB → POWER guard → LIGHT → gamma → 6-bit RGB.
+- **One message per frame:** all of a frame's changed lights go in one `5E` message
+  (`F0 00 02 03 4D 58 5E (idx r g b)… F7`, Apollo index for pads and underglow). That costs
+  8 + 4n bytes: ≈ 1.33 packets per light, plus 3.
+- **Whole-grid changes:** a frame where every light is the same colour (a beat flash, a
+  fade to black) is sent as `5E` index 0, which fills everything in 4 packets. In the probe's
+  Beat test, 96 separate notes at 2,000/s reached the late pads after the flash had already
+  faded. A frame that is "mostly one colour" is sent as fill plus exceptions.
+- **The power guard.** Before sending, Viz estimates the frame's draw as Σ(R+G+B) over the
+  lights, in 8-bit units. In **POWER Port** mode, a frame over the budget is scaled down as a
+  whole, so the picture dims but keeps its shape. The budget comes from the probe's worst
+  case: at the Matrix's maximum brightness, all 96 lights at `#6D6D6D` was safe and
+  `#919191` froze, so the budget is 96 × 3 × 109 × 0.85 ≈ **26,700**. It is safe at any
+  Matrix brightness setting. Underglow is weighted ×2 in the estimate until a follow-up
+  probe (White Edge at maximum brightness) measures its real share, because Matrix OS drives
+  it 4× harder (`MatrixOSConfig.h`, "Underglow" partition). **POWER Hub** turns the guard
+  off, for a powered hub.
+- **Fallback: notes.** If SysEx stops working (another Matrix OS version, another device),
+  the same frame is sent as Note On: the nearest colour across the two built-in palettes (ch
+  1 + ch 2, ≈ 250 colours) from a precomputed OKLab LUT. It costs 1 packet per light. It is
+  chosen automatically if the Matrix never shows a SysEx frame. Not detectable today, so it
+  is a hidden setting for now.
+- **Rejected for now:** custom palettes (`41 3D`) per scene. They work, but rewriting a
+  palette doesn't recolour pads already lit (the colour is looked up when the note arrives,
+  `NoteHandler` :158), so drifting colours would still mean re-sending every pad. Kept as a
+  bandwidth trick for Graphic scenes, if direct RGB proves too heavy.
 
 ### Sending: only what changed, within budget
 
@@ -501,21 +540,28 @@ output, the LED queue and the shadow UI** (`plugin_api_v1.h:182-200`; `ext_midi_
 `schwung_shim.c:1743-1760`; `shadow_constants.h:83`). It returns 0 when full and promises
 nothing more.
 
-- **Packet:** cable 2, Note On: `0x29, 0x90 | ch, note, index`, with ch 0 or 1 (palette 1 or
-  2; ch 2 for a custom palette). Set cable 2 explicitly, as the chain's knob CC out does
-  (`src/modules/chain/dsp/chain_params.c:1067-1073`).
-- **Diff:** Viz keeps what it believes each of the 96 lights shows. A pad is sent only when
-  its wanted (channel, index) differs.
+- **Packets:** cable 2 SysEx packets (CIN 4–7: `0x24`–`0x27`), or for the fallback, Note On
+  `0x29, 0x90 | ch, note, index`. Set cable 2 explicitly, as the chain's knob CC out does
+  (`src/modules/chain/dsp/chain_params.c:1067-1073`). The probe used this and the host never
+  refused a packet.
+- **Diff:** Viz keeps what it believes each of the 96 lights shows. A light is sent only when
+  its wanted colour differs by more than a small perceptual threshold (OKLab ΔE), so tiny
+  flickers in a slow drift don't spend bandwidth.
 - **Order:** the biggest perceptual change goes first, so under pressure the picture
-  degrades into a slight lag, not a smear of wrong pads.
-- **Budget: at most 8 packets per block.** That is about 2,750 per second, or 43 full-grid
-  repaints per second, and it leaves 12 of the 20 slots for everyone else.
+  degrades into a slight lag, not a smear of wrong pads. A frame's message is capped at the
+  budget, and the rest wait for the next frame.
+- **Budget: ≈ 2,000 packets per second** (≈ 6 per block, evenly spaced). The probe saw no
+  freeze or loss up to ~6,900/s, and 2,000/s looked right, so this leaves headroom and
+  leaves 14 of the 20 MIDI_OUT slots per block for everyone else. At 30 fps that is ~66
+  packets per frame, or about 48 changed lights.
 - **Retry:** on a 0 return the pad stays dirty, and **a refused packet is never recorded as
   sent**. A pad believed lit but never sent would stay wrong forever; the same rule as
   `knob_emit_cc_out` (`chain_params.c:1075-1086`).
-- **Refresh:** once every 2 s, one row is marked dirty in rotation. This heals any pad the
-  Matrix dropped, for example when it is unplugged and plugged back in. There is no
-  hotplug signal, and packets sent with nothing attached simply go nowhere.
+- **Refresh: every light is re-sent at least every 2 s**, a quarter of them every 0.5 s in
+  rotation. This heals pads that Move's own MIDI out painted over (measured: drum notes
+  36–38 lit the bottom-left pads), and any light the Matrix missed, for example across a
+  replug. There is no hotplug signal, and packets sent with nothing attached simply go
+  nowhere.
 - **All-off:**
   - bypass sends all-off over the next few blocks;
   - `destroy_instance` queues all-off before tearing down;
@@ -562,13 +608,13 @@ decides how far the genes wander from it.
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
 | 1 | `mode` | MODE | **Sync mode.** Enum: Auto / Beat / Sound / Blend (see the table under *Mode*). Default Auto. |
-| 2 | `shade` | SHADE | **Shading.** Enum: Plain / Fine. Fine turns on temporal dithering for in-between shades. It is only active at RATE 45 or 60, and otherwise reads as Plain. Default Plain. |
-| 3 | `light` | LIGHT | **Brightness.** Overall level, applied before quantising, so dim scenes keep their gradient. It also guards the Matrix's 500 mA power draw. Default 60%. |
+| 2 | `power` | POWER | **Power source.** Enum: Port / Hub. *Port* (default) keeps every frame inside what the Move's USB-A port can supply (measured; see *The power guard*). *Hub* removes the limit, for a Matrix on a powered USB hub. |
+| 3 | `light` | LIGHT | **Brightness.** Overall level, 0–100%, applied after the power guard, so it can only make things dimmer. Default 80%. |
 | 4 | `rate` | RATE | **Frame rate.** Enum: 20 / 30 / 45 / 60 fps. Higher is smoother but costs more MIDI. Default 30. |
 | 5 | `cycle` | CYCLE | **Journey phrase.** Enum: 4 / 8 / 16 / 32 / 64 bars between Journey scene changes while Move plays. Default 16. |
 | 6 | `turn` | TURN | **Rotation.** Enum: 0° / 90° / 180° / 270°. Default 0°. |
 | 7 | `edge` | EDGE | **Underglow.** Enum: Off / Glow (each side carries the picture's colour beside it) / Breathe (the beat pulses the whole ring). Default Glow. |
-| 8 | `nudge` | NUDGE | **Light timing.** −100 to +100 ms. It shifts the lights earlier or later to match the sound you hear: the clock is ahead of the speakers, and the analysis is behind the clock. Default 0 until the probe measures the right value. |
+| 8 | `nudge` | NUDGE | **Light timing.** −150 to +100 ms. It shifts the lights earlier or later to match the sound you hear. **Default −40 ms**: driven straight off the clock, the lights ran about 40 ms ahead of the speakers (probe Beat test). |
 
 ---
 
@@ -579,8 +625,14 @@ decides how far the genes wander from it.
   the organic families leading.
 - **A JavaScript canvas or custom on-screen UI.** Fleet rule: knobs and the jog wheel only.
   The Matrix is the display.
-- **Full-RGB SysEx as the main path.** Move's USB-A port cannot pass SysEx to a multi-port
-  device (`E16_REMOTE.md:113-127`). It stays a probe-gated bonus.
+- **Built-in palettes as the main path.** The first draft assumed SysEx couldn't reach a
+  multi-port device (`E16_REMOTE.md:113-127`). The probe showed it does, so full RGB leads and
+  the palettes are the fallback.
+- **Temporal dithering (the first draft's SHADE knob).** It was only ever there to fake
+  colours missing from the palettes. Full RGB makes it unnecessary, and its knob became
+  POWER.
+- **Per-scene custom palettes as the main path.** They work, but a palette rewrite doesn't
+  recolour lit pads, so drifting colour costs a full repaint anyway.
 - **A separate "EQ mode" and "sync mode" per scene.** The shared inputs make every scene work
   in every mode, so MODE only chooses the sources.
 - **Sending all 64 pads every frame.** That would fill the entire shared external ring on
@@ -626,8 +678,10 @@ decides how far the genes wander from it.
   external grids, but only as overtake modules from JS.
 - **help.json:**
   - what Viz is;
-  - setting up the Matrix (Performance app, Menu Lock);
-  - **turn on Move→Schwung to make Sound mode hear Move's tracks**;
+  - setting up the Matrix (Performance app, Menu Lock; replug if it stays dark);
+  - POWER: keep *Port* unless the Matrix is on a powered hub;
+  - touching the Matrix plays the Move's selected track;
+  - turn off Move's MIDI output to USB-A for a clean picture;
   - what each knob does.
 
 ---
@@ -653,25 +707,22 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
 
 ## Build order
 
-0. **Probe: `viz-probe`.** A Master FX that sends test patterns and logs counters. On the
-   Move, with the Matrix attached, it answers:
-   - Does the Matrix enumerate on USB-A? Does it stay powered with all 64 pads at full
-     white, and at `LIGHT` 60%?
-   - Do notes on ch 1 and ch 2 paint the right pads in the right colours? Is the pad map
-     above right, and does the underglow map work?
-   - How many packets per block get through before `midi_send_external` returns 0, with
-     Move idle and with Move playing a busy set?
-   - Do SysEx `5E` and `41 3D` take effect (the multi-port question)?
-   - Do Matrix pad presses arrive anywhere on the Move?
-   - Does the Master FX buffer contain Move's tracks with Move→Schwung off, and with it
-     on?
-   - Does a 32x32 4x4-supersampled render plus a 16x16 fluid solve keep up at 60 fps on the
-     render thread? What does the CPU page show?
-   - What NUDGE value lines the lights up with the speakers?
+0. ~~**Probe: `viz-probe`.**~~ Done 2026-10-10; see [probe/RESULTS.md](probe/RESULTS.md).
+   - The Matrix connects (sometimes only after a replug).
+   - The pad and underglow maps are right.
+   - SysEx `5E` and `41 3D` both work.
+   - Throughput isn't a limit (no loss up to ~6,900/s).
+   - **Power is** the limit, and has been measured.
+   - Master FX hears Move's tracks without Move→Schwung.
+   - NUDGE ≈ −40 ms.
+   - The render bench is ~0.5 ms per frame.
+   - Still open: White Edge at maximum brightness (the underglow's share of the power), the
+     `5E` fill-all flash, and drums with Move→Schwung on. These fold into 0.1.0's first
+     device pass.
 1. **0.1.0: the engine and the first scenes.**
    - Preview tool.
-   - Light engine: render thread, seqlock, SPSC ring, OKLab LUT across two palettes, diff,
-     budget, retry, refresh, all-off.
+   - Light engine: render thread, seqlock, SPSC ring, full-RGB `5E` frames with fill-all,
+     perceptual diff, power guard, budget, retry, rotating refresh, all-off.
    - Features: clock, 8 bands, three hits, automatic level, own beat.
    - All four MODEs and both pages.
    - Organic scenes: Aurora, Nebula, Tide, Fireflies, Reeds, Lava.
@@ -687,7 +738,7 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
 4. **0.4.0: The full set.**
    - Organic: Smoke, Stars, Dawn, Lissajous, Sea, Rain.
    - Graphic: Tunnel, Life, Sparkle.
-   - SHADE Fine, NUDGE, and the custom-palette path if the probe passed SysEx.
+   - The note fallback (two built-in palettes, OKLab LUT).
 5. **0.5.0: Finished.** Every scene tuned on the device, `help.json`, a manual entry,
    release, and the catalog entry.
 
@@ -700,10 +751,15 @@ the v2 API with a fake host. The host records every `midi_send_external` packet,
 packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
 
 **MIDI**
-- No block ever sends more than 8 packets.
+- No block ever sends more than 6 packets, or 2,000 per second averaged.
+- Every SysEx frame parses: header `F0 00 02 03 4D 58 5E`, (idx r g b) groups with idx a
+  valid Apollo index for one of the 96 lights, 6-bit values, `F7`.
+- In POWER Port, no frame's estimated draw exceeds the budget; in Hub, frames are untouched.
+- Every light is re-sent within 2 s, even when nothing changes.
 - Every refused packet is re-sent, and nothing refused is ever recorded as shown. The fake
   host refuses 50% of packets, and the final believed grid must equal the wanted grid.
-- Every packet is cable 2, Note On, ch 1–3, with a note in 36–99, 100–123 or 28–35.
+- Every packet is cable 2. Fallback notes are ch 1–2, with a note in 36–99, 100–123 or
+  28–35.
 - Bypass and `destroy_instance` leave all 96 lights off.
 - TURN rotates a known test frame correctly.
 
@@ -730,5 +786,6 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
   `state`.
 
 **By eye.** Preview pages for each family go to the user before each version. Then there is a
-device pass with the Matrix on the Move: Move→Schwung off and on, playing and stopped, and
-every scene at LIGHT 60% and 100%.
+device pass with the Matrix on the Move: Move→Schwung off and on, playing and stopped, every
+scene at LIGHT 80% and 100%, and with the Matrix at its maximum brightness in POWER Port (it
+must never freeze).
