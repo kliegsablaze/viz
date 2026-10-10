@@ -10,10 +10,9 @@ OS **3.2**.
 
 The facts about the Matrix were read from its source, and the facts about the host from
 Schwung's source. The probe (`probe/`, results in [probe/RESULTS.md](probe/RESULTS.md)) then
-checked them on the user's Move and Matrix. **Three of the design's assumptions turned out
+checked them on the user's Move and Matrix. **Two of the design's assumptions turned out
 wrong, and the design now follows the measurements:**
 - full-colour SysEx **does** reach the Matrix;
-- the Master FX **does** hear Move's own tracks without Move→Schwung;
 - the Move's USB-A port **cannot** power the whole Matrix brightly.
 
 - **Module ID:** `viz`
@@ -198,8 +197,9 @@ palettes are the fallback.
   (`:121-127`). **These reach the Move and play its selected track** (channel 1, measured).
   Master FX don't receive USB-A input (`shadow_midi.c:1040-1169`), so Viz can't use or
   swallow them. help.json says that touching the Matrix plays the Move.
-- **Move's own MIDI out paints the Matrix.** With a drum clip playing, the bottom-left pads
-  (notes 36–38) lit up in time with the drums: Move sends its track notes out of USB-A.
+- **Move's own MIDI out paints the Matrix.** With a drum clip playing (sequenced on a Move
+  track, sounded by Strut in a Schwung slot), the bottom-left pads (notes 36–38) lit up in
+  time with the drums: Move sends its track notes out of USB-A.
   Viz therefore **repaints every light regularly**, not only changed ones (see *Sending*),
   and help.json suggests turning off Move's MIDI output to USB-A.
 - **Connecting can fail silently.** On the first plug-in, neither direction worked. A replug
@@ -221,7 +221,9 @@ palettes are the fallback.
 3. Optional: turn on its **Menu Lock**, so a stray Fn press doesn't open the menu over the
    show.
 4. Optional: turn off Move's MIDI output to USB-A, so Move's notes don't paint the pads.
-5. Load Viz into a Master FX position.
+5. To light up to Move's own instruments (not only Schwung modules), turn on Move→Schwung in
+   Schwung's Global Settings.
+6. Load Viz into a Master FX position.
 
 ---
 
@@ -234,23 +236,28 @@ frames)` processes in place, stereo interleaved int16, 128 frames at 44.1 kHz
 (`src/host/audio_fx_api_v2.h:19-32`; `plugin_api_v1.h:119-120`). Viz reads the buffer and
 never writes it.
 
-**What a Master FX hears: Move's tracks, with no setting needed.** Schwung's notes describe
-the Master FX buffer as Schwung's own audio only, with Move's tracks added afterwards unless
-Move→Schwung (Link Audio rebuild) is on (CLAUDE.md "Gain Staging"; `schwung_shim.c:3570-3580`,
-`:3745-3747`, `:2994-2997`). **The probe measured otherwise.** With Move→Schwung switched
-**off**, a Move drum clip reached the probe at −12 to −15 dBFS for the whole minute it played,
-and silence followed when it stopped (RESULTS.md, "What a Master FX hears"). Loom's
-Master FX probe had already recorded Move's mix on this device.
+**What a Master FX hears.** Schwung's notes describe the Master FX buffer as Schwung's own
+audio (its slot modules), with Move's own tracks added afterwards unless Move→Schwung (Link
+Audio rebuild) is on (CLAUDE.md "Gain Staging"; `schwung_shim.c:3570-3580`, `:3745-3747`,
+`:2994-2997`). The probe agrees as far as it went: with Move→Schwung **off**, a drum clip
+played by Strut in a Schwung slot reached the probe at −12 to −15 dBFS for the whole minute
+it played, and silence followed when it stopped (RESULTS.md, "What a Master FX hears").
 
-So Viz's sound-led pictures work with **no setting**. Two details:
+So:
+- **Schwung modules** always reach Viz, with no setting.
+- **Move's own instruments** reach Viz only with **Move→Schwung on**, per Schwung's notes.
+  This is **untested**; the first device pass of 0.1.0 measures it, off and on. help.json
+  and *Setting up the Matrix* say to turn it on.
 - **The metronome is invisible to Viz:** Schwung adds its click after Master FX. That is
   correct; nobody wants the show to pulse to the click.
-- **Untested:** drums with Move→Schwung on. Loom suggests it works too; the first device pass
-  of 0.1.0 confirms it.
+- With Move playing, the Beat pictures need no audio at all: the clock drives them whatever
+  Viz hears.
 
 **Rejected: a Tool.** Loom proved that a Tool with `capabilities.end_of_chain` hears the
-whole final mix and keeps running after Back. The user wanted Viz to live where effects
-live, and the measurement above removes the one reason to doubt that choice.
+whole final mix and keeps running after Back. It would hear Move's own instruments with no
+setting. The user wanted Viz to live where effects live; the cost is that Move→Schwung must
+be on for Viz to hear Move's own instruments. If the device pass shows that Move→Schwung
+doesn't reach Master FX either, the Tool comes back as the fallback.
 
 ---
 
@@ -682,6 +689,7 @@ decides how far the genes wander from it.
   - POWER: keep *Port* unless the Matrix is on a powered hub;
   - touching the Matrix plays the Move's selected track;
   - turn off Move's MIDI output to USB-A for a clean picture;
+  - turn on Move→Schwung so Viz hears Move's own instruments, not only Schwung modules;
   - what each knob does.
 
 ---
@@ -713,12 +721,12 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
    - SysEx `5E` and `41 3D` both work.
    - Throughput isn't a limit (no loss up to ~6,900/s).
    - **Power is** the limit, and has been measured.
-   - Master FX hears Move's tracks without Move→Schwung.
+   - Master FX hears Schwung's slot modules with Move→Schwung off.
    - NUDGE ≈ −40 ms.
    - The render bench is ~0.5 ms per frame.
    - Still open: White Edge at maximum brightness (the underglow's share of the power), the
-     `5E` fill-all flash, and drums with Move→Schwung on. These fold into 0.1.0's first
-     device pass.
+     `5E` fill-all flash, and Move's own instruments with Move→Schwung off and on. These
+     fold into 0.1.0's first device pass.
 1. **0.1.0: the engine and the first scenes.**
    - Preview tool.
    - Light engine: render thread, seqlock, SPSC ring, full-RGB `5E` frames with fill-all,
@@ -786,6 +794,6 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
   `state`.
 
 **By eye.** Preview pages for each family go to the user before each version. Then there is a
-device pass with the Matrix on the Move: Move→Schwung off and on, playing and stopped, every
-scene at LIGHT 80% and 100%, and with the Matrix at its maximum brightness in POWER Port (it
-must never freeze).
+device pass with the Matrix on the Move: Move's own instruments and Schwung modules,
+Move→Schwung off and on, playing and stopped, every scene at LIGHT 80% and 100%, and with the
+Matrix at its maximum brightness in POWER Port (it must never freeze).

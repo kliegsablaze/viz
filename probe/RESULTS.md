@@ -91,28 +91,34 @@ lights, which takes ~48 ms at that rate, while the flash lasts ~87 ms in three s
 late in the queue miss it. **Whole-grid changes go as SysEx `5E` index 0 (fill all), about 4
 packets**, instead of 96 notes. To verify in the next probe run.
 
-## What a Master FX hears — Move's tracks, with Move→Schwung OFF
+## What a Master FX hears — Schwung's modules; Move's own tracks still untested
 
 | Time | Move→Schwung | Playing | Probe input |
 |---|---|---|---|
 | 23:34:32 | switched **OFF** | — | — |
-| 23:34:37–23:35:40 | off | a Move drum clip | **−12 to −15 dBFS, continuous** |
+| 23:34:37–23:35:40 | off | a drum clip played by **Strut** (a Schwung slot) | **−12 to −15 dBFS, continuous** |
 | 23:35:44 → | off | stopped | silence |
 | 23:36:25 | switched on | stopped | — |
+
+**Correction (the user, 2026-10-10):** the drums were Strut in a Schwung slot, not one of
+Move's own instruments. An earlier version of this file read the run as "Master FX hears
+Move's tracks without Move→Schwung"; that does not follow. The run shows only that **a
+Master FX hears Schwung's own slot modules**, with Move→Schwung off, which is what Schwung's
+notes say (CLAUDE.md "Gain Staging").
 
 Earlier, with Move→Schwung on and **only the metronome** playing, the probe heard silence,
 broken by bursts (probably hand-played pads). That is correct: Schwung adds its metronome
 after Master FX.
 
-**So the Master FX buffer carries Move's own tracks without Move→Schwung.** That contradicts
-the host note (CLAUDE.md "Gain Staging", which describes Master FX as Schwung-only). It
-agrees with Loom's master-fx probe recording Move's mix. Viz's Sound mode needs no setting.
-Untested: drums plus Move→Schwung on (expected to work too).
+**Still untested:** a track played by Move's own instruments, with Move→Schwung off (expected
+silent) and on (expected heard). Until measured, Viz follows Schwung's notes: to react to
+Move's own instruments, Move→Schwung must be on.
 
 ## Move's own MIDI out paints the Matrix
 
-With a drum clip playing, the bottom-left pads (notes 36–38) lit purple in time with the
-drums. Move sends its track notes out of USB-A, and the Performance app paints them.
+With the Strut drum clip playing, the bottom-left pads (notes 36–38) lit purple in time with
+the drums. The clip is sequenced on a Move track, and Move sends that track's notes out of
+USB-A even though Strut makes the sound; the Performance app paints them.
 Consequences:
 - Viz must **repaint lights it didn't set**: a periodic refresh that marks every light dirty,
   not just one row.
