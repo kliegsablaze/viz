@@ -239,14 +239,15 @@ never writes it.
 **What a Master FX hears.** Schwung's notes describe the Master FX buffer as Schwung's own
 audio (its slot modules), with Move's own tracks added afterwards unless Move→Schwung (Link
 Audio rebuild) is on (CLAUDE.md "Gain Staging"; `schwung_shim.c:3570-3580`, `:3745-3747`,
-`:2994-2997`). The probe agrees as far as it went: with Move→Schwung **off**, a drum clip
-played by Strut in a Schwung slot reached the probe at −12 to −15 dBFS for the whole minute
-it played, and silence followed when it stopped (RESULTS.md, "What a Master FX hears").
+`:2994-2997`). **The probe confirms it** (RESULTS.md, "What a Master FX hears"):
+- a drum clip played by Strut in a Schwung slot reached the probe at −12 to −15 dBFS with
+  Move→Schwung **off**;
+- a clip on one of Move's own instruments was **silent** to the probe with Move→Schwung off,
+  and arrived at −20.5 dBFS with it **on**.
 
 So:
 - **Schwung modules** always reach Viz, with no setting.
-- **Move's own instruments** reach Viz only with **Move→Schwung on**, per Schwung's notes.
-  This is **untested**; the first device pass of 0.1.0 measures it, off and on. help.json
+- **Move's own instruments** reach Viz only with **Move→Schwung on** (measured). help.json
   and *Setting up the Matrix* say to turn it on.
 - **The metronome is invisible to Viz:** Schwung adds its click after Master FX. That is
   correct; nobody wants the show to pulse to the click.
@@ -256,8 +257,7 @@ So:
 **Rejected: a Tool.** Loom proved that a Tool with `capabilities.end_of_chain` hears the
 whole final mix and keeps running after Back. It would hear Move's own instruments with no
 setting. The user wanted Viz to live where effects live; the cost is that Move→Schwung must
-be on for Viz to hear Move's own instruments. If the device pass shows that Move→Schwung
-doesn't reach Master FX either, the Tool comes back as the fallback.
+be on for Viz to hear Move's own instruments, and the measurement shows that this works.
 
 ---
 
@@ -522,12 +522,17 @@ dissolves, drifting palettes and soft glows possible, since none of them fit a f
   faded. A frame that is "mostly one colour" is sent as fill plus exceptions.
 - **The power guard.** Before sending, Viz estimates the frame's draw as Σ(R+G+B) over the
   lights, in 8-bit units. In **POWER Port** mode, a frame over the budget is scaled down as a
-  whole, so the picture dims but keeps its shape. The budget comes from the probe's worst
-  case: at the Matrix's maximum brightness, all 96 lights at `#6D6D6D` was safe and
-  `#919191` froze, so the budget is 96 × 3 × 109 × 0.85 ≈ **26,700**. It is safe at any
-  Matrix brightness setting. Underglow is weighted ×2 in the estimate until a follow-up
-  probe (White Edge at maximum brightness) measures its real share, because Matrix OS drives
-  it 4× harder (`MatrixOSConfig.h`, "Underglow" partition). **POWER Hub** turns the guard
+  whole, so the picture dims but keeps its shape. **Underglow counts double** in the estimate,
+  and the **budget is 33,000**. Both come from the probe at the Matrix's maximum brightness
+  (RESULTS.md, "Power"):
+  - pads alone froze at `#DADADA` and were safe at `#B6B6B6`;
+  - underglow alone froze at `#FFFFFF` and was safe at `#DADADA`;
+  - all 96 lights froze at `#919191` and were safe at `#6D6D6D`.
+
+  Together these put one underglow light at 1.4–2.0 pads, so ×2 is the cautious end. They
+  put the freeze point above ≈ 36,500 pad-units in every case that fits the data, and 33,000
+  leaves a 10% margin. So the guard allows pads alone up to `#ABABAB` and all 96 lights up to
+  `#565656`. It is safe at any Matrix brightness setting. **POWER Hub** turns the guard
   off, for a powered hub.
 - **Fallback: notes.** If SysEx stops working (another Matrix OS version, another device),
   the same frame is sent as Note On: the nearest colour across the two built-in palettes (ch
@@ -721,12 +726,12 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
    - SysEx `5E` and `41 3D` both work.
    - Throughput isn't a limit (no loss up to ~6,900/s).
    - **Power is** the limit, and has been measured.
-   - Master FX hears Schwung's slot modules with Move→Schwung off.
+   - Master FX hears Schwung's slot modules always.
    - NUDGE ≈ −40 ms.
    - The render bench is ~0.5 ms per frame.
-   - Still open: White Edge at maximum brightness (the underglow's share of the power), the
-     `5E` fill-all flash, and Move's own instruments with Move→Schwung off and on. These
-     fold into 0.1.0's first device pass.
+   - The `5E` fill-all flash lights every pad and the underglow together, in 4 packets.
+   - Move's own instruments reach Master FX only with Move→Schwung on.
+   - Master FX never receives anything from the USB-A device (pad presses count 0).
 1. **0.1.0: the engine and the first scenes.**
    - Preview tool.
    - Light engine: render thread, seqlock, SPSC ring, full-RGB `5E` frames with fill-all,

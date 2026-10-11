@@ -10,8 +10,8 @@ port, Schwung **1.7.3**, 2026-10-10.
   lit anything. Unplugging and replugging fixed it. After that, Matrix pad presses play the
   Move's selected track (channel 1), and the probe's notes light pads.
 - Schwung's note that nothing a multi-port device sends reaches the Move
-  (`E16_REMOTE.md:113-127`) does **not** hold for the Matrix. Its notes arrive. SysEx is
-  still untested (below).
+  (`E16_REMOTE.md:113-127`) does **not** hold for the Matrix. Its notes arrive at the
+  Move, and SysEx from the Move reaches it (below).
 - `midi_send_external` never refused a packet in any test (0 refusals, at most 8 packets
   per block).
 
@@ -37,15 +37,24 @@ messages: at 400 messages/s, evenly spaced, it still froze.
 | Palette 1, underglow off | minimum | never froze |
 | White All, grey 1→7 | minimum | never froze |
 | White All, grey 1→7 | **maximum** | **froze at LEVEL 4** (palette 124 = `#919191`); LEVEL 3 (123 = `#6D6D6D`) was safe |
+| White Pads, grey 1→7 | **maximum** | **froze at LEVEL 6** (126 = `#DADADA`); LEVEL 5 (125 = `#B6B6B6`) was safe |
+| White Edge, grey 1→7 | **maximum** | **froze at LEVEL 7** (127 = `#FFFFFF`); LEVEL 6 (`#DADADA`) was safe |
 
 **Consequence for Viz:** a power guard. Each frame, Viz estimates the draw as the sum of
-R+G+B over all lit lights (palette RGB, 0–255 each). If the estimate exceeds the budget, it
-dims the whole frame.
+R+G+B (0–255 each) over the lit lights, with each **underglow light counted twice**. If the
+estimate exceeds the budget, it dims the whole frame.
 
-The budget is calibrated for the **worst case, the Matrix at maximum brightness**: all 96
-lights at `#6D6D6D` is safe, and at `#919191` freezes. So the 8-bit sum budget is ≈ 96 × 3 ×
-109 ≈ 31,400, with a margin. A powered USB hub between the Move and the Matrix should lift
-the limit; that's an untested setting.
+Working it out, in pad-units (one pad's R+G+B at maximum Matrix brightness), with *w* the
+draw of one underglow light relative to one pad and *T* the freeze point:
+- pads alone: 64 × 546 = 34,944 safe, 64 × 654 = 41,856 froze;
+- underglow alone: 32 × 654 × *w* safe, 32 × 765 × *w* froze;
+- all 96: 64 × 327 + 32 × 327 × *w* safe, 64 × 435 + 32 × 435 × *w* froze.
+
+Only *w* between ≈ 1.49 and 2.0 fits all six, with *T* above ≈ 36,550. So counting the
+underglow ×2 is the cautious end, and a **budget of 33,000** leaves a 10% margin. That allows
+pads alone up to `#ABABAB`, and all 96 lights up to `#565656`. It holds at any Matrix
+brightness setting. A powered USB hub between the Move and the Matrix should lift the limit;
+that's an untested setting.
 
 ## Throughput — not a limit
 
@@ -89,9 +98,13 @@ landed on beat 1 (time signature 4/4 from `move_info`).
 At 2,000 packets/s, some pads stayed dark on each whole-grid flash. A flash changes all 96
 lights, which takes ~48 ms at that rate, while the flash lasts ~87 ms in three steps; pads
 late in the queue miss it. **Whole-grid changes go as SysEx `5E` index 0 (fill all), about 4
-packets**, instead of 96 notes. To verify in the next probe run.
+packets**, instead of 96 notes.
 
-## What a Master FX hears — Schwung's modules; Move's own tracks still untested
+**Beat Fill** (the same flash, each step one `5E` index-0 message) at the Matrix's maximum
+brightness: **every pad and the underglow lit together, none dark.** The white step peaks at
+6-bit 26 (`#6B6B6B`), inside the power limit.
+
+## What a Master FX hears — Schwung's modules always; Move's own only with Move→Schwung
 
 | Time | Move→Schwung | Playing | Probe input |
 |---|---|---|---|
@@ -110,9 +123,24 @@ Earlier, with Move→Schwung on and **only the metronome** playing, the probe he
 broken by bursts (probably hand-played pads). That is correct: Schwung adds its metronome
 after Master FX.
 
-**Still untested:** a track played by Move's own instruments, with Move→Schwung off (expected
-silent) and on (expected heard). Until measured, Viz follows Schwung's notes: to react to
-Move's own instruments, Move→Schwung must be on.
+**Move's own instruments** (a clip on a Move instrument, everything else muted, TEST Off):
+
+| Time | Move→Schwung | Playing | Probe input |
+|---|---|---|---|
+| 23:56:18 | switched **off** | — | — |
+| 23:56:27–23:56:49 | off | yes (beats 2.9–47) | **silence** |
+| 23:57:04 | switched **on** | — | — |
+| 23:57:09–23:57:37 | on | yes (beats 3.7–60) | **−20.5 dBFS, continuous** |
+
+So Schwung's notes are right: a Master FX hears Move's own instruments **only with
+Move→Schwung on**. Viz's help says to turn it on.
+
+## Nothing comes back from the USB-A device
+
+Through the whole session the probe's count of MIDI arriving from external sources stayed at
+**0**, including a deliberate 10 s of Matrix pad presses (which played the Move's drums).
+A Master FX can't hear the device, so Viz can't detect what's plugged in, and can't ask it
+anything (no identity request). Any choice of device has to be a setting.
 
 ## Move's own MIDI out paints the Matrix
 

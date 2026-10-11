@@ -36,11 +36,11 @@
 
 enum {
     T_OFF, T_WALK, T_EDGE, T_PAL1, T_PAL2, T_WHITE, T_WHITE_EDGE, T_WHITE_ALL, T_FLOOD,
-    T_SYSEX_RGB, T_SYSEX_PAL, T_BEAT, T_COUNT
+    T_SYSEX_RGB, T_SYSEX_PAL, T_BEAT, T_BEAT_FILL, T_COUNT
 };
 static const char *k_test_names[T_COUNT] = {
     "Off", "Walk", "Edge", "Palette 1", "Palette 2", "White Pads", "White Edge", "White All", "Flood",
-    "SysEx RGB", "SysEx Palette", "Beat"
+    "SysEx RGB", "SysEx Palette", "Beat", "Beat Fill"
 };
 
 /* ---- Matrix layout (Matrix OS Performance8x8.h:88, NoteToXY) ---------- */
@@ -328,6 +328,12 @@ static void sysex_rgb(inst_t *s, int phase) {
     sysex_queue(s, b, n);
 }
 
+static void sysex_fill(inst_t *s, uint8_t r, uint8_t g, uint8_t b) {
+    /* 5E with Apollo index 0: every light one colour (Performance8x8.cpp:203-207), 4 packets */
+    const uint8_t m[] = { 0xF0, 0x00, 0x02, 0x03, 0x4D, 0x58, 0x5E, 0x00, r, g, b, 0xF7 };
+    sysex_queue(s, m, sizeof m);
+}
+
 static void sysex_palette(inst_t *s) {
     /* Write custom palette 1 (channel 3) in RAM: 41 3D 00 (idx r g b)...
      * Never 41 7D, which would save it to flash. Black -> ember -> white. */
@@ -435,6 +441,36 @@ static void pattern(inst_t *s, double beat) {
                 s->beat_flash--;
             }
             fill(s, 0, NLIGHT, 0, c);
+        }
+        break;
+    case T_BEAT_FILL: /* the Beat flash, but each step is one SysEx fill-all message, not 96 notes */
+        {
+            if (s->test_blocks == 0) {
+                /* the fill paints everything, so no notes are ever needed in this test */
+                for (int i = 0; i < NLIGHT; i++) { s->want[i] = s->shown[i]; s->known[i] = 1; }
+                sysex_fill(s, 0, 0, 0);
+            }
+            if (beat >= 0) {
+                double bpm = s->m_bpm > 0 ? s->m_bpm : 120.0;
+                double b = beat + s->nudge_ms / 1000.0 * bpm / 60.0;
+                if (s->last_beat >= 0 && floor(b) != floor(s->last_beat)) {
+                    int up = s->m_ts_up > 0 ? s->m_ts_up : 4;
+                    s->beat_down = ((long)floor(b) % up) == 0;
+                    s->beat_flash = 30;
+                    s->m_beats_seen++;
+                }
+                s->last_beat = b;
+            } else {
+                s->last_beat = -1;
+            }
+            /* three steps like Beat, then black. White peaks at 26 (#6B6B6B on all 96 lights),
+             * under the measured freeze point (#919191) at the Matrix's maximum brightness;
+             * full red on all 96 is a third of full white's draw. */
+            if (s->beat_flash == 30) { if (s->beat_down) sysex_fill(s, 63, 0, 0); else sysex_fill(s, 26, 26, 26); }
+            if (s->beat_flash == 19) { if (s->beat_down) sysex_fill(s, 32, 0, 0); else sysex_fill(s, 14, 14, 14); }
+            if (s->beat_flash == 9)  { if (s->beat_down) sysex_fill(s, 12, 0, 0); else sysex_fill(s, 5, 5, 5); }
+            if (s->beat_flash == 1)  sysex_fill(s, 0, 0, 0);
+            if (s->beat_flash > 0) s->beat_flash--;
         }
         break;
     }
@@ -546,7 +582,7 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
         return snprintf(buf, len,
             "[{\"key\":\"test\",\"name\":\"Test pattern\",\"short_name\":\"TEST\",\"type\":\"enum\","
             "\"options\":[\"Off\",\"Walk\",\"Edge\",\"Palette 1\",\"Palette 2\",\"White Pads\",\"White Edge\",\"White All\",\"Flood\","
-            "\"SysEx RGB\",\"SysEx Palette\",\"Beat\"],\"default\":\"Walk\"},"
+            "\"SysEx RGB\",\"SysEx Palette\",\"Beat\",\"Beat Fill\"],\"default\":\"Walk\"},"
             "{\"key\":\"level\",\"name\":\"White level\",\"short_name\":\"LEVEL\",\"type\":\"int\","
             "\"min\":0,\"max\":7,\"default\":4},"
             "{\"key\":\"nudge\",\"name\":\"Beat nudge (ms)\",\"short_name\":\"NUDGE\",\"type\":\"int\","
