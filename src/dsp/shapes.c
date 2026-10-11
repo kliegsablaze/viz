@@ -1463,15 +1463,21 @@ void viz_shapes_frame(viz_shapes_t *s, int scene, const viz_shape_knobs_t *k, co
     memset(s->cur, 0, sizeof s->cur);
     k_shapes[scene].draw(&g, &c, s->state);
 
-    /* FOLD: the top left is copied to the rest. */
+    /* FOLD: each pad shows the brightest of itself and its mirror images, so
+     * nothing the scene draws is lost. */
     int m = k->mirror;
     for (int y = 0; y < 8; y++)
         for (int x = 0; x < 8; x++) {
-            int sx = x, sy = y;
-            if ((m == 1 || m >= 3) && sx > 3) sx = 7 - sx;
-            if ((m == 2 || m >= 3) && sy > 3) sy = 7 - sy;
-            if (m == 4 && sx > sy) { int t = sx; sx = sy; sy = t; }
-            memcpy(&s->out[(y * 8 + x) * 3], &s->cur[(sy * 8 + sx) * 3], 3 * sizeof(float));
+            float *o = &s->out[(y * 8 + x) * 3];
+            o[0] = o[1] = o[2] = 0;
+            for (int v = 0; v < 8; v++) {
+                int ax = x, ay = y;
+                if ((v & 1) && (m == 1 || m >= 3)) ax = 7 - ax;
+                if ((v & 2) && (m == 2 || m >= 3)) ay = 7 - ay;
+                if ((v & 4) && m == 4) { int t = ax; ax = ay; ay = t; }
+                const float *c = &s->cur[(ay * 8 + ax) * 3];
+                for (int j = 0; j < 3; j++) if (c[j] > o[j]) o[j] = c[j];
+            }
         }
 
     /* REACT: what the kick does to the whole picture. */

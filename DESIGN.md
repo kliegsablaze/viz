@@ -3,7 +3,7 @@
 *Viz turns a Matrix into a light show for whatever the Move is playing: bold, geometric shapes
 in clear colours, stepping on the beat, with eight knobs you can play like an instrument.*
 
-**Status:** 0.1.0 built and installed. 2026-10-11: scenes in alphabetical order, a random scene at start, MODE Beat by default, Count counts to 4. On 2026-10-10 the user turned the show from organic
+**Status:** 0.1.0 built and installed. 2026-10-11: scenes in alphabetical order, a random scene at start, MODE Beat by default, Count counts to 4, FOLD keeps everything. On 2026-10-10 the user turned the show from organic
 pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
 gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
 Sequence and Mod pages (now SEQ and MOD, before Settings) and the knob pictures were added,
@@ -373,6 +373,9 @@ The mix is summed to mono (keeping stereo width as one extra number), then:
 | Blend | clock time + sound (stronger)  | as Auto                             |
 
 - **Auto** is the user's first rule. **Beat** is the default since 2026-10-11 (the user).
+- **Beat passes no sound**, so seven scenes drawn only from it (Burst, Rain, Bars, Kit, Bass,
+  Pads, Tally) are dark there, and REACT does nothing. The SEQ page's Random skips those
+  seven while there is no sound (the user, 2026-10-11); chosen by hand, they stay dark.
 - **Blend** differs from Auto when playing: the clock moves the picture and the sound sets
   its *size and brightness* at twice Auto's depth.
 
@@ -674,8 +677,12 @@ device's deadline (`plugin_api_v1.h:29-104`). So:
 2. **Colour.** The colour is the set's colour `(ci + shift) % 3`, where SHIFT advances
    `shift` on each bar, beat or kick. *Rainbow* instead takes a hue from the colour, the
    shift and the pad's position.
-3. **FOLD** copies the top-left of the picture onto the rest: across (Sides), down (Top),
-   both (Four), or both plus the diagonal (Eight).
+3. **FOLD** makes the picture symmetric across (Sides), down (Top), both (Four), or both
+   plus the diagonal (Eight). Each pad shows the brightest of itself and its mirror images,
+   so nothing the scene draws is lost. Until 2026-10-11 it copied the top-left part onto
+   the rest, which left the grid dark whenever a scene drew elsewhere: with random steps,
+   1,027 of 14,000 scene/rate/size/fold mixes were dark for over half a bar (Eight 471,
+   Four 327); the brightest-image fold leaves 65, all from slow rates, none from FOLD.
 4. **REACT** works on every scene:
    - Glow: brightness × (0.55 + 0.45·kick) × 1.25;
    - Grow: SIZE + 1 while the kick is above half, and brighter;
@@ -848,7 +855,7 @@ These shape the picture, and each one shows its effect straight away.
 | 3 | `rate` | RATE | **Steps, on the beat.** Enum: 1 bar, 1/2, 1/4, 1/8, 1/16: one step per bar up to one per 16th. Default 1/4. |
 | 4 | `size` | SIZE | **Shape size (pads).** Enum: 1, 2, 3, 4. How big or thick the shapes are. Default 2. |
 | 5 | `trail` | TRAIL | **Trail length.** Enum: Off, Short, Medium, Long, Smear. How long lights linger after they move on; Off is hard-edged. Default Short. |
-| 6 | `fold` | FOLD | **Mirror fold.** Enum: Off, Sides, Top, Four, Eight. Folds the picture left/right, top/bottom, four ways or eight ways (a kaleidoscope). Default Off. |
+| 6 | `fold` | FOLD | **Mirror fold.** Enum: Off, Sides, Top, Four, Eight. Folds the picture left/right, top/bottom, four ways or eight ways (a kaleidoscope), keeping the brightest of each pad's mirror images. Default Off. |
 | 7 | `shift` | SHIFT | **Colour swap.** Enum: Hold, Bar, Beat, Kick. When the three colours trade places. Default Bar. |
 | 8 | `react` | REACT | **Kick reaction.** Enum: Off, Glow, Grow, Flash, Flip. What a kick does to any scene (see *Rendering*). Default Glow. |
 
@@ -1092,6 +1099,10 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
   those rules a mostly-dark picture kept refilling the grid black and never drew its lit
   pads, and a bright flash pushed the underglow past the power budget for a frame.)
 - TURN rotates a known test frame correctly.
+
+**Fold** (`test_fold_keeps`): no scene is darker folded than with FOLD Off, at any FOLD.
+The SEQ page's Random never picks a sound-only scene when there is no sound, and still does
+when there is.
 
 **Move's notes** (`test_move_notes`; the fake Matrix paints channel messages from its
 palettes, even between SysEx packets)

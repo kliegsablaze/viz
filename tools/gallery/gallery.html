@@ -214,7 +214,7 @@ const KNOBS = [
   { key: "rate", label: "RATE", what: "How fast it steps, locked to the beat: one step per bar, half, beat, 8th or 16th.", opts: ["1 bar", "1/2", "1/4", "1/8", "1/16"], def: 2 },
   { key: "size", label: "SIZE", what: "How big or thick the shapes are, in pads.", opts: ["1", "2", "3", "4"], def: 1 },
   { key: "trail", label: "TRAIL", what: "How long lights linger after they move on. Off is hard-edged.", opts: ["Off", "Short", "Medium", "Long", "Smear"], def: 1 },
-  { key: "mirror", label: "FOLD", what: "Folds the picture: left/right, top/bottom, four ways or eight ways (kaleidoscope).", opts: ["Off", "Sides", "Top", "Four", "Eight"], def: 0 },
+  { key: "mirror", label: "FOLD", what: "Folds the picture: left/right, top/bottom, four ways or eight ways (kaleidoscope). Nothing is lost: each pad shows the brightest of its mirror images.", opts: ["Off", "Sides", "Top", "Four", "Eight"], def: 0 },
   { key: "shift", label: "SHIFT", what: "When the colours swap places: never, every bar, every beat, or on every kick.", opts: ["Hold", "Bar", "Beat", "Kick"], def: 1 },
   { key: "react", label: "REACT", what: "What a kick does: nothing, brighten, grow the shapes, flash the grid, or flip lit and dark.", opts: ["Off", "Glow", "Grow", "Flash", "Flip"], def: 1 },
 ];
@@ -763,15 +763,21 @@ class Player {
       const col = colourOf(ci, x, y, sh), k = (y * 8 + x) * 3;
       for (let j = 0; j < 3; j++) cur[k + j] = Math.max(cur[k + j], col[j] * Math.min(1, a)); } };
     this.sc.draw(g, c, this.st);
-    // FOLD: fold so the top-left part is copied to the rest.
+    // FOLD: each pad shows the brightest of itself and its mirror images, so
+    // nothing the scene draws is lost (copying only the top-left part left
+    // the grid dark whenever the scene drew elsewhere).
     const m = knob.mirror, out = this.out;
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-      let sx = x, sy = y;
-      if ((m === 1 || m >= 3) && sx > 3) sx = 7 - sx;
-      if ((m === 2 || m >= 3) && sy > 3) sy = 7 - sy;
-      if (m === 4 && sx > sy) { const t = sx; sx = sy; sy = t; }
-      const k = (y * 8 + x) * 3, s = (sy * 8 + sx) * 3;
-      out[k] = cur[s]; out[k + 1] = cur[s + 1]; out[k + 2] = cur[s + 2];
+      const k = (y * 8 + x) * 3;
+      out[k] = out[k + 1] = out[k + 2] = 0;
+      for (let v = 0; v < 8; v++) {
+        let ax = x, ay = y;
+        if ((v & 1) && (m === 1 || m >= 3)) ax = 7 - ax;
+        if ((v & 2) && (m === 2 || m >= 3)) ay = 7 - ay;
+        if ((v & 4) && m === 4) { const t = ax; ax = ay; ay = t; }
+        const s = (ay * 8 + ax) * 3;
+        for (let j = 0; j < 3; j++) if (cur[s + j] > out[k + j]) out[k + j] = cur[s + j];
+      }
     }
     // REACT: what the kick does to the whole picture.
     if (react >= 1) { const gain = 1 + 0.7 * feat.kick, base = react === 1 ? .55 + .45 * feat.kick : 1;

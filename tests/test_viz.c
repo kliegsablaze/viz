@@ -19,6 +19,7 @@
 #include "host/plugin_api_v1.h"
 #include "device.h"
 #include "seq.h"
+#include "shapes.h"
 #include "viz.h"
 
 void move_audio_fx_on_midi(void *inst, const uint8_t *msg, int len, int source);
@@ -453,6 +454,30 @@ static void test_move_notes(void) {
     }
 }
 
+/* FOLD never loses light: every pad lit with FOLD Off is at least as bright
+ * folded (each pad takes the brightest of its mirror images). */
+static void test_fold_keeps(void) {
+    static viz_shapes_t a, b;
+    int lost = 0;
+    for (int sc = 0; sc < SHAPE_COUNT; sc++)
+        for (int m = 1; m < SHAPE_MIRRORS; m++) {
+            viz_shapes_init(&a); viz_shapes_init(&b);
+            viz_shape_knobs_t k0 = { 2, 2, 1, 0, 0, 0, 0, 0 }, k1 = k0;
+            k1.mirror = m;
+            for (int i = 0; i < 20; i++) {
+                viz_shape_feat_t f;
+                memset(&f, 0, sizeof f);
+                f.beats = i * 0.2; f.time = i / 30.0; f.dt = 1 / 30.0; f.beats_per_bar = 4;
+                viz_shapes_frame(&a, sc, &k0, &f);
+                viz_shapes_frame(&b, sc, &k1, &f);
+            }
+            double sa = 0, sb = 0;
+            for (int i = 0; i < 192; i++) { sa += a.out[i]; sb += b.out[i]; }
+            lost += sb < sa;
+        }
+    CHECK(lost == 0, "FOLD made %d scene/fold pairs darker than Off", lost);
+}
+
 /* A new Viz starts on a random scene. */
 static void test_random_start(void) {
     char seen[8][64];
@@ -775,6 +800,30 @@ static void test_sequence(void) {
         }
     }
 
+    /* Beat mode passes no sound: Random skips the scenes drawn from it */
+    {
+        int named = 0;
+        for (int i = 0; i < SCENE_COUNT; i++) named += viz_seq_sound_only(i);
+        CHECK(named == 7, "%d sound-only scenes found by name, not 7", named);
+        viz_seq_params_t q;
+        viz_seq_defaults(&q);
+        q.play = 1;
+        for (int pass = 0; pass < 2; pass++) {
+            viz_seq_t t;
+            viz_seq_init(&t);
+            int hits = 0;
+            for (int b = 0; b < 4000; b += 4) {
+                viz_look_t M = plain_look();
+                viz_features_t g = feat_at(b + 0.5);
+                g.sound = pass;
+                viz_seq_apply(&t, &q, &g, &M);
+                hits += viz_seq_sound_only(M.scene);
+            }
+            if (pass == 0) CHECK(hits == 0, "with no sound, Random picked a sound-only scene %d times", hits);
+            else CHECK(hits > 0, "with sound, Random never picked a sound-only scene");
+        }
+    }
+
     /* Random: the same song position draws the same; passes draw variety */
     viz_seq_defaults(&p);
     p.play = 1;
@@ -954,6 +1003,7 @@ int main(int argc, char **argv) {
     printf("midi\n");       test_midi();
     printf("move notes\n"); test_move_notes();
     printf("random start\n"); test_random_start();
+    printf("fold\n");       test_fold_keeps();
     printf("refusals\n");   test_refusals();
     printf("turn\n");       test_turn();
     printf("launchpad\n");  test_launchpad();

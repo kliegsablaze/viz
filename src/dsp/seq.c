@@ -135,6 +135,28 @@ static double lfo(const viz_seq_t *s, const viz_mod_t *m, int j, const viz_featu
 }
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+/* Scenes drawn only from the sound: dark in Beat mode, which passes none, so
+ * Random skips them there (the user, 2026-10-11). */
+static const char *const k_sound_only[] = { "Burst", "Rain", "Bars", "Kit", "Bass", "Pads", "Tally" };
+int viz_seq_sound_only(int scene) {
+    if (scene < 0 || scene >= SCENE_COUNT) return 0;
+    for (unsigned i = 0; i < sizeof k_sound_only / sizeof k_sound_only[0]; i++)
+        if (!strcmp(viz_scene_names[scene], k_sound_only[i])) return 1;
+    return 0;
+}
+
+/* Random's scene for the step playing: any scene, or with no sound, any but
+ * those (the n-th of the rest, so it stays the same for the whole step). */
+static int random_scene(const viz_seq_t *s, const viz_features_t *f) {
+    if (f->sound || !viz_seq_sound_only(s->draw[0])) return s->draw[0];
+    int n = 0;
+    for (int i = 0; i < SCENE_COUNT; i++) n += !viz_seq_sound_only(i);
+    int want = pick(s->start, s->cur, 5, n);
+    for (int i = 0; i < SCENE_COUNT; i++)
+        if (!viz_seq_sound_only(i) && want-- == 0) return i;
+    return s->draw[0];
+}
 static int wrapi(int v, int n) { return ((v % n) + n) % n; }
 
 void viz_seq_apply(viz_seq_t *s, const viz_seq_params_t *p, const viz_features_t *f, viz_look_t *L) {
@@ -147,7 +169,7 @@ void viz_seq_apply(viz_seq_t *s, const viz_seq_params_t *p, const viz_features_t
     else { s->cur = -1; s->valid = 0; }
     if (s->cur >= 0) {
         const viz_seq_step_t *st = &p->step[s->cur];
-        L->scene = st->scene == OPT_RANDOM ? s->draw[0] : viz_scene_order[clampi(st->scene - 1, 0, SCENE_COUNT - 1)];
+        L->scene = st->scene == OPT_RANDOM ? random_scene(s, f) : viz_scene_order[clampi(st->scene - 1, 0, SCENE_COUNT - 1)];
         if (st->color == OPT_RANDOM) k->color = s->draw[1];
         else if (st->color != OPT_SAME) k->color = clampi(st->color - 2, 0, SHAPE_COLORS - 1);
         if (st->rate == OPT_RANDOM) rate7 = s->draw[2];
