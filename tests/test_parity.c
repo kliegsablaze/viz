@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
     int bad_scene[SHAPE_COUNT] = { 0 };
     long off_by_one = 0, compared = 0;
     for (int c = 0; c < NCFG; c++) {
-        viz_shape_knobs_t k = { k_cfg[c][0], k_cfg[c][1], k_cfg[c][2], k_cfg[c][3], k_cfg[c][4], k_cfg[c][5], k_cfg[c][6] };
+        viz_shape_knobs_t k = { k_cfg[c][0], k_cfg[c][1], k_cfg[c][2], k_cfg[c][3], k_cfg[c][4], k_cfg[c][5], k_cfg[c][6], 0 };
         listener_t L;
         memset(&L, 0, sizeof L);
         L.last16 = -1;

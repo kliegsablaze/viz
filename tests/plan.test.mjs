@@ -25,13 +25,40 @@ for (const p of chainParams) {
     check(drawn === p.short_name.toUpperCase(), `${p.key}: cell "${p.short_name}" draws as "${drawn}"`);
 }
 
-// Two pages, Look then Settings, eight knobs each, in the designed order.
-const pages = planPages({ hierarchy, chainParams, visible: () => true }).pages.filter((p) => Array.isArray(p.keys));
+// Four pages: Look, Settings, Sequence, Mod. The Sequence page shows the
+// chosen step's knobs only, through gates on STEP (the shadow UI's
+// comparison, compareConditionValue: an exact string match).
+const visibleFor = (values) => (cond) => {
+    const v = values[cond.param];
+    if (v === undefined) return true;
+    if (cond.equals !== undefined) return String(v) === String(cond.equals);
+    if (cond.not_equals !== undefined) return String(v) !== String(cond.not_equals);
+    return true;
+};
 const look = ["scene", "color", "rate", "size", "trail", "fold", "shift", "react"];
 const settings = ["mode", "power", "light", "grid", "cycle", "turn", "edge", "nudge"];
-check(pages.length === 2, `2 knob pages, got ${pages.length}: ${pages.map((p) => p.title).join(", ")}`);
-check(JSON.stringify(pages[0]?.keys) === JSON.stringify(look), `page 1 is ${JSON.stringify(pages[0]?.keys)}`);
-check(JSON.stringify(pages[1]?.keys) === JSON.stringify(settings), `page 2 is ${JSON.stringify(pages[1]?.keys)}`);
+const modKeys = ["m1_kind", "m1_rate", "m1_aim", "m1_depth", "m2_kind", "m2_rate", "m2_aim", "m2_depth"];
+for (let step = 1; step <= 8; step++) {
+    const plan = planPages({ hierarchy, chainParams, visible: visibleFor({ step: String(step) }) });
+    const pages = plan.pages.filter((p) => Array.isArray(p.keys));
+    const seq = ["step", `s${step}_scene`, `s${step}_bars`, "play", `s${step}_color`, `s${step}_rate`, `s${step}_size`, `s${step}_fold`];
+    check(pages.length === 4, `step ${step}: 4 knob pages, got ${pages.length}: ${pages.map((p) => JSON.stringify(p.keys)).join(" ")}`);
+    check(JSON.stringify(pages[0]?.keys) === JSON.stringify(look), `page 1 is ${JSON.stringify(pages[0]?.keys)}`);
+    check(JSON.stringify(pages[1]?.keys) === JSON.stringify(settings), `page 2 is ${JSON.stringify(pages[1]?.keys)}`);
+    check(JSON.stringify(pages[2]?.keys) === JSON.stringify(seq), `step ${step}: page 3 is ${JSON.stringify(pages[2]?.keys)}`);
+    check(JSON.stringify(pages[3]?.keys) === JSON.stringify(modKeys), `page 4 is ${JSON.stringify(pages[3]?.keys)}`);
+}
+// Every gate names a real STEP option, and the pictures ask for at most four extra keys.
+const stepOpts = chainParams.find((p) => p.key === "step")?.options || [];
+for (const lv of Object.values(hierarchy.levels))
+    for (const e of lv.params || []) if (e.visible_if)
+        check(e.visible_if.param === "step" && stepOpts.includes(e.visible_if.equals), `${e.key}: gate ${JSON.stringify(e.visible_if)}`);
+for (const p of chainParams) {
+    const ek = p.viz?.extra_keys || [];
+    check(ek.length <= 4, `${p.key}: ${ek.length} extra keys`);
+    if (p.viz) check(p.viz.kind === "custom:viz", `${p.key}: picture kind ${p.viz.kind}`);
+}
+check(!chainParams.some((p) => settings.includes(p.key) && p.viz), "Settings keeps the host's own pictures");
 
 const mod = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "../src/module.json"), "utf8"));
 const { findings } = validateContract({ id: "viz", hierarchy, chainParams, capabilities: mod.capabilities });

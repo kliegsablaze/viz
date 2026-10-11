@@ -1440,7 +1440,7 @@ void viz_shapes_frame(viz_shapes_t *s, int scene, const viz_shape_knobs_t *k, co
         memset(s->disp, 0, sizeof s->disp);
     }
     int react = k->react;
-    double sp = f->beats * k_rates[k->rate < 0 || k->rate >= SHAPE_RATES ? 2 : k->rate];
+    double sp = f->beats * (k->steps_per_beat > 0 ? k->steps_per_beat : k_rates[k->rate < 0 || k->rate >= SHAPE_RATES ? 2 : k->rate]);
     long sh;
     switch (k->shift) {
     case 1:  sh = (long)floor(f->beats / (f->beats_per_bar > 0 ? f->beats_per_bar : 4)); break;

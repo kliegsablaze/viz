@@ -155,6 +155,53 @@
         "NUDGE: lights",
         "earlier or later."
       ]
+    },
+    {
+      "title": "Sequence",
+      "lines": [
+        "Eight steps take",
+        "turns at the Look",
+        "page. PLAY turns",
+        "it on.",
+        "",
+        "STEP: the step the",
+        "other knobs edit.",
+        "SCENE, COLOR, RATE,",
+        "SIZE, FOLD: that",
+        "step's look. Same",
+        "keeps the Look",
+        "page's; Random",
+        "picks anew each",
+        "time it plays.",
+        "BARS: how long it",
+        "plays. Off skips",
+        "it.",
+        "",
+        "It follows the song",
+        "from bar 1."
+      ]
+    },
+    {
+      "title": "Mod",
+      "lines": [
+        "Two LFOs, one a",
+        "row.",
+        "KIND: Sine, Ramp,",
+        "Square, Random,",
+        "Kick (on each kick)",
+        "or Level (loudness).",
+        "RATE: 1/16 to 16",
+        "bars, on the beat.",
+        "AIM: the knob it",
+        "moves, or Light or",
+        "Turn.",
+        "DEPTH: how far and",
+        "which way.",
+        "",
+        "Knobs keep what you",
+        "set: the LFOs move",
+        "the picture only."
+      ]
     }
   ]
 }

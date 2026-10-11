@@ -18,6 +18,7 @@
 #include "host/audio_fx_api_v2.h"
 #include "host/plugin_api_v1.h"
 #include "device.h"
+#include "seq.h"
 #include "viz.h"
 
 extern audio_fx_api_v2_t *move_audio_fx_init_v2(const host_api_v1_t *host);
@@ -387,7 +388,7 @@ static viz_features_t *feature_track(void) {
 }
 
 static viz_look_t base_look(int scene) {
-    viz_look_t look = { .scene = scene, .k = { 2, 2, 1, 1, 0, 1, 1 }, .light = 0.8f, .edge = EDGEMODE_GLOW,
+    viz_look_t look = { .scene = scene, .k = { 2, 2, 1, 1, 0, 1, 1, 0 }, .light = 0.8f, .edge = EDGEMODE_GLOW,
                         .edge_weight = 2, .edge_sides = 15 };
     return look;
 }
@@ -399,7 +400,7 @@ static void test_scenes(void) {
     for (int sc = 0; sc < SCENE_COUNT; sc++) {
         viz_look_t look = base_look(sc);
         for (int extreme = 0; extreme < 2; extreme++) {
-            if (extreme) look.k = (viz_shape_knobs_t){ 8, 4, 3, 4, 4, 3, 4 };
+            if (extreme) look.k = (viz_shape_knobs_t){ 8, 4, 3, 4, 4, 3, 4, 0 };
             viz_render_t *r = viz_render_new(42);
             int black_run = 0, worst_black = 0, nonfinite = 0;
             double ms = 0;
@@ -473,11 +474,149 @@ static void dump(const char *dir, const char *name, const char *text) {
     if (f) { fputs(text, f); fclose(f); }
 }
 
+/* ---- the Sequence and Mod pages (seq.c) ---------------------------------- */
+
+static viz_features_t feat_at(double beat) {
+    viz_features_t f;
+    memset(&f, 0, sizeof f);
+    f.beat = beat;
+    f.beats_per_bar = 4;
+    f.sound = 1;
+    return f;
+}
+
+static viz_look_t plain_look(void) {
+    viz_look_t L;
+    memset(&L, 0, sizeof L);
+    L.scene = 5;
+    L.k = (viz_shape_knobs_t){ 2, 2, 1, 1, 0, 1, 1, 0 };
+    L.light = 0.8f;
+    return L;
+}
+
+static void test_sequence(void) {
+    viz_seq_params_t p;
+    viz_seq_t s;
+    viz_seq_defaults(&p);
+    viz_seq_init(&s);
+
+    /* PLAY Off: the look is untouched */
+    viz_look_t L = plain_look(), ref = plain_look();
+    viz_features_t f = feat_at(3.3);
+    viz_seq_apply(&s, &p, &f, &L);
+    CHECK(!memcmp(&L, &ref, sizeof L), "PLAY Off changed the look");
+
+    /* step 1 one bar, step 3 two beats of Rings in Fire: 1 3 1 3 ... */
+    p.play = 1;
+    p.step[2].bars = 3;                       /* 2 beats */
+    p.step[2].scene = 1 + 1;                  /* Rings */
+    p.step[2].color = 2 + 1;                  /* Fire */
+    p.step[2].rate = 2 + 0;                   /* 4 bars */
+    static const struct { double beat; int step; } walk[] = {
+        { 0, 0 }, { 3.9, 0 }, { 4.0, 2 }, { 5.9, 2 }, { 6.0, 0 }, { 9.99, 0 }, { 10.0, 2 }, { 13, 0 },
+        { 1.0, 0 },                           /* Move restarted: back to step 1 */
+        { 604, 2 },                           /* jumped ahead: 604 = 100 loops of 6, + 4 */
+    };
+    for (unsigned i = 0; i < sizeof walk / sizeof walk[0]; i++) {
+        L = plain_look();
+        f = feat_at(walk[i].beat);
+        viz_seq_apply(&s, &p, &f, &L);
+        CHECK(s.cur == walk[i].step, "at beat %.2f step %d plays, not %d", walk[i].beat, s.cur + 1, walk[i].step + 1);
+        if (s.cur == 2) {
+            CHECK(L.scene == 1 && L.k.color == 1, "step 3 shows scene %d colour %d", L.scene, L.k.color);
+            CHECK(L.k.steps_per_beat == 1.0 / 16, "step 3's 4 bars is %g steps a beat", L.k.steps_per_beat);
+            CHECK(L.k.size == 1 && L.k.mirror == 0, "Same moved size or fold");
+        }
+    }
+
+    /* Random: the same song position draws the same; passes draw variety */
+    viz_seq_defaults(&p);
+    p.play = 1;
+    p.step[0].bars = 1;                       /* Random length too */
+    int seen[SCENE_COUNT] = { 0 }, distinct = 0, lens_ok = 1;
+    viz_seq_t a, b;
+    viz_seq_init(&a);
+    viz_seq_init(&b);
+    for (double beat = 0; beat < 2000; beat += 0.5) {
+        viz_look_t la = plain_look(), lb = plain_look();
+        f = feat_at(beat);
+        viz_seq_apply(&a, &p, &f, &la);
+        viz_seq_apply(&b, &p, &f, &lb);
+        CHECK(la.scene == lb.scene && la.k.color == lb.k.color, "Random drew differently at beat %.1f", beat);
+        if (la.scene >= 0 && la.scene < SCENE_COUNT && !seen[la.scene]++) distinct++;
+        if (la.k.color < 0 || la.k.color >= SHAPE_COLORS) lens_ok = 0;
+        double len = a.len;
+        if (!(len == 1 || len == 2 || len == 4 || len == 8 || len == 16 || len == 32)) lens_ok = 0;
+    }
+    CHECK(distinct > 40, "Random scene drew only %d scenes in 2000 beats", distinct);
+    CHECK(lens_ok, "a Random length or colour fell outside its options");
+
+    /* all steps Off: nothing plays */
+    for (int i = 0; i < SEQ_STEPS; i++) p.step[i].bars = BARS_OFF;
+    L = plain_look();
+    f = feat_at(10);
+    viz_seq_apply(&s, &p, &f, &L);
+    CHECK(s.cur == -1 && L.scene == 5, "with every step Off, step %d plays scene %d", s.cur + 1, L.scene);
+
+    /* the LFOs: depth 0 moves nothing; a Square on Color swings it both ways;
+     * Light only ever dims; Kick follows the kicks */
+    viz_seq_defaults(&p);
+    viz_seq_init(&s);
+    L = plain_look();
+    f = feat_at(1.3);
+    viz_seq_apply(&s, &p, &f, &L);
+    CHECK(!memcmp(&L, &ref, sizeof L), "LFOs at depth 0 changed the look");
+    p.mod[0] = (viz_mod_t){ MOD_SQUARE, 2, AIM_COLOR, 0.25f };          /* 1/4: a beat a cycle */
+    int up = 0, down = 0;
+    for (double beat = 0; beat < 8; beat += 0.1) {
+        L = plain_look();
+        f = feat_at(beat);
+        viz_seq_apply(&s, &p, &f, &L);
+        up += L.k.color == 4;
+        down += L.k.color == 0;
+    }
+    CHECK(up > 20 && down > 20, "Square on Color: up %d, down %d", up, down);
+    p.mod[0] = (viz_mod_t){ MOD_SINE, 4, AIM_LIGHT, 1 };
+    float lo = 1, hi = 0;
+    for (double beat = 0; beat < 8; beat += 0.1) {
+        L = plain_look();
+        f = feat_at(beat);
+        viz_seq_apply(&s, &p, &f, &L);
+        if (L.light < lo) lo = L.light;
+        if (L.light > hi) hi = L.light;
+    }
+    CHECK(hi <= 0.8f + 1e-6f && lo < 0.05f, "Light swung %.2f..%.2f (LIGHT 0.8)", lo, hi);
+    p.mod[0] = (viz_mod_t){ MOD_KICK, 2, AIM_SIZE, 1 };
+    L = plain_look();
+    f = feat_at(20);
+    f.hits[0] = 7;                                                    /* a kick lands */
+    viz_seq_apply(&s, &p, &f, &L);
+    CHECK(L.k.size == 3, "a kick with Kick on Size made size %d", L.k.size);
+    L = plain_look();
+    f = feat_at(23);
+    f.hits[0] = 7;
+    viz_seq_apply(&s, &p, &f, &L);
+    CHECK(L.k.size == 1, "three beats after the kick, size is %d", L.k.size);
+    p.mod[0] = (viz_mod_t){ MOD_RAMP, 0, AIM_TURN, 1 };
+    int turns[4] = { 0 };
+    for (double beat = 0; beat < 4; beat += 0.01) {
+        L = plain_look();
+        f = feat_at(beat);
+        viz_seq_apply(&s, &p, &f, &L);
+        if (L.turn >= 0 && L.turn < 4) turns[L.turn]++;
+    }
+    CHECK(turns[0] && turns[1] && turns[2] && turns[3], "Ramp on Turn missed a quarter turn");
+}
+
 static void test_controls(const char *dir) {
     void *v = make();
-    static char cp[8192], ui[4096], st[1024], st2[1024];
-    CHECK(api->get_param(v, "chain_params", cp, sizeof cp) > 0, "no chain_params");
-    CHECK(api->get_param(v, "ui_hierarchy", ui, sizeof ui) > 0, "no ui_hierarchy");
+    /* The host's buffers: 64 KB for chain_params, 16 KB for the hierarchy, and
+     * a sound's state shares the chain_params size; keep well inside. */
+    static char cp[65536], ui[16384], st[4096], st2[4096];
+    int ncp = api->get_param(v, "chain_params", cp, sizeof cp), nui = api->get_param(v, "ui_hierarchy", ui, sizeof ui);
+    CHECK(ncp > 0 && ncp < 32768, "chain_params is %d bytes", ncp);
+    CHECK(nui > 0 && nui < 8192, "ui_hierarchy is %d bytes", nui);
+    printf("  contract: chain_params %d bytes, ui_hierarchy %d bytes\n", ncp, nui);
     dump(dir, "chain_params.json", cp);
     dump(dir, "ui_hierarchy.json", ui);
     /* every chain_params key is on a page */
@@ -494,7 +633,7 @@ static void test_controls(const char *dir) {
         CHECK(strstr(ui, q) != NULL, "%s is in chain_params but on no page", key);
         keys++;
     }
-    CHECK(keys == 16, "%d keys, expected 16", keys);
+    CHECK(keys == 74, "%d keys, expected 74", keys);
 
     api->set_param(v, "scene", "Lava");
     api->set_param(v, "color", "3");
@@ -506,7 +645,15 @@ static void test_controls(const char *dir) {
     api->set_param(v, "grid", "LP Pro MK3");
     api->set_param(v, "nudge", "nonsense");                /* ignored */
     api->set_param(v, "light", "7");                       /* clamped */
+    api->set_param(v, "play", "On");
+    api->set_param(v, "s3_scene", "Rings");
+    api->set_param(v, "s3_bars", "2 beats");
+    api->set_param(v, "s5_rate", "4 bars");
+    api->set_param(v, "m2_aim", "Turn");
+    api->set_param(v, "m2_depth", "-0.5");
+    api->set_param(v, "step", "6");                        /* where the page looks: not kept */
     api->get_param(v, "state", st, sizeof st);
+    CHECK(strstr(st, "\"step\"") == NULL, "state keeps STEP: %s", st);
     void *w = make();
     api->set_param(w, "state", st);
     api->get_param(w, "state", st2, sizeof st2);
@@ -519,6 +666,28 @@ static void test_controls(const char *dir) {
     api->get_param(w, "nudge", buf, sizeof buf);  CHECK(!strcmp(buf, "-75"), "nudge %s", buf);
     api->get_param(w, "light", buf, sizeof buf);  CHECK(atof(buf) == 1.0, "light %s", buf);
     api->get_param(w, "grid", buf, sizeof buf);   CHECK(!strcmp(buf, "LP Pro MK3"), "grid %s", buf);
+    api->get_param(w, "s3_scene", buf, sizeof buf); CHECK(!strcmp(buf, "Rings"), "s3_scene %s", buf);
+    api->get_param(w, "s5_rate", buf, sizeof buf);  CHECK(!strcmp(buf, "4 bars"), "s5_rate %s", buf);
+    api->get_param(w, "m2_depth", buf, sizeof buf); CHECK(atof(buf) == -0.5, "m2_depth %s", buf);
+    api->get_param(w, "step", buf, sizeof buf);     CHECK(!strcmp(buf, "1"), "step %s", buf);
+    /* defaults, as the user set them (2026-10-11) */
+    void *d = make();
+    const char *want[][2] = { { "play", "Off" }, { "s1_bars", "1 bar" }, { "s2_bars", "Off" }, { "s8_bars", "Off" },
+                              { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "Same" },
+                              { "s4_size", "Same" }, { "s4_fold", "Same" }, { "m1_depth", "0.00" } };
+    for (unsigned i = 0; i < sizeof want / sizeof want[0]; i++) {
+        api->get_param(d, want[i][0], buf, sizeof buf);
+        CHECK(!strcmp(buf, want[i][1]), "default %s is %s, not %s", want[i][0], buf, want[i][1]);
+    }
+    api->get_param(d, "seq_now", buf, sizeof buf);
+    CHECK(!strcmp(buf, "0|10000000|4|4"), "seq_now at rest is %s", buf);
+    api->set_param(d, "play", "On");
+    api->set_param(d, "s2_bars", "Random");
+    synth_t sy = { 0, 9 };
+    run(d, &sy, 0.2, 1, 1);
+    api->get_param(d, "seq_now", buf, sizeof buf);
+    CHECK(!strcmp(buf, "1|1R000000|0|4"), "seq_now playing is %s", buf);
+    api->destroy_instance(d);
     api->destroy_instance(v);
     api->destroy_instance(w);
 }
@@ -542,6 +711,7 @@ int main(int argc, char **argv) {
     printf("listening\n");  test_listening();
     printf("scenes\n");     test_scenes();
     printf("controls\n");   test_controls(dir);
+    printf("sequence\n");   test_sequence();
 
     if (g_fail) { fprintf(stderr, "test_viz: %d FAILED\n", g_fail); return 1; }
     printf("test_viz: all passed\n");

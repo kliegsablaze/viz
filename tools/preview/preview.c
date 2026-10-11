@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     fprintf(o, "const FPS=%d,PLAY=[%.3f,%.3f];\nconst SCENES=[\n", VIZ_FPS, play_from, play_to);
     for (int k = 0; k < ns; k++) {
         int sc = scenes[k];
-        viz_look_t look = { .scene = sc, .k = { color >= 0 ? color : 2, 2, 1, 1, 0, 1, 1 }, .light = 0.8f,
+        viz_look_t look = { .scene = sc, .k = { color >= 0 ? color : 2, 2, 1, 1, 0, 1, 1, 0 }, .light = 0.8f,
                             .edge = EDGEMODE_GLOW, .edge_weight = 2.0f, .edge_sides = 15 };
         viz_render_t *r = viz_render_new(0x5EED1234u);
         viz_frame_t fr;

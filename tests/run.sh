@@ -23,6 +23,7 @@ rc=0
 if command -v node >/dev/null 2>&1; then
   node tests/parity_dump.mjs && "$out/test_parity" build/parity_js.bin build/parity_names.txt || rc=$?
   node tests/plan.test.mjs "$out" "$SCHWUNG" || rc=$?
+  node tests/widgets.test.mjs "$out" "$SCHWUNG" || rc=$?
   node tests/help_lint.mjs || rc=$?
 else
   echo "FAIL: node is not on PATH (tests/plan.test.mjs, tests/help_lint.mjs)"

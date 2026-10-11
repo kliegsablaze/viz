@@ -4,8 +4,9 @@
 in clear colours, stepping on the beat, with eight knobs you can play like an instrument.*
 
 **Status:** 0.1.0 built and installed. On 2026-10-10 the user turned the show from organic
-pictures to geometric scenes (see *The aesthetic brief*). The 100 scenes chosen in the scene
-gallery are ported to C with exact parity, and a device pass with the new scenes is next.
+pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
+gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
+Sequence and Mod pages and the knob pictures were added; their device pass is next.
 Written against Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's
 Matrix runs Matrix OS **3.2**.
 
@@ -546,6 +547,96 @@ on the Settings page is kept for it.
 
 ---
 
+## The Sequence page
+
+The user, 2026-10-11: a third page "related to sequencing of scenes, of colours, of speeds",
+up to eight slots, each choosing what plays and for how long; pick a step, then edit it.
+
+- **Eight steps take turns at the Look page.** A step sets the scene and, if it says so, the
+  colour set, rate, size and fold. Anything a step leaves at **Same** stays whatever the Look
+  page says, so TRAIL, SHIFT, REACT and every Same field are still played live.
+- **PLAY** starts it. It is **Off by default**, so Viz opens on the Look page's settings and
+  the sequence is something you turn on.
+- **It follows the song.** Steps run from beat 0 of Move's clock (or of Viz's own beat when
+  stopped), so the same bar always shows the same step, and restarting Move starts at step 1.
+  A jump ahead walks the sequence forward to where it would be.
+- **BARS** is how long a step plays: 1 beat, 2 beats, 1, 2, 4 or 8 bars. **Off** skips the
+  step, so the loop is any length from one step to eight. Step 1 starts at 1 bar, the others
+  Off.
+- **Random** is the first option of every step field. It draws again each time the step
+  comes round, from all of that field's values (any of the 106 scenes, any length from 1 beat
+  to 8 bars). The draw is seeded by where in the song the step starts, so a song played
+  twice lights the same way twice. **Defaults:** scene and colour Random; rate, size and fold
+  Same.
+- **Step RATE reaches further than the Look page's**: 4 bars and 2 bars, then 1 bar to
+  1/16. The scene engine takes a steps-per-beat override for the two long ones
+  (`viz_shape_knobs_t.steps_per_beat`).
+- **Edits apply at once.** Turning a playing step's BARS changes its length now; turning it
+  Off moves on.
+
+**Choosing a step: gates, not a rack.** STEP (`step`, "1"–"8") is a gate key. All 48 step
+knobs (`s1_scene` … `s8_fold`) are declared on the one level, each with
+`visible_if: {"param": "step", "equals": "N"}`, ordered so the gates leave STEP, SCENE,
+BARS, PLAY over COLOR, RATE, SIZE, FOLD. A gate re-plans the moment its own knob writes it,
+so turning STEP swaps the knobs at once (Strut's page-within-page, eight ways). STEP is where
+the page is looking, not part of the show, so it is not saved with the set. Rejected: one
+set of "edit" knobs that read and write the chosen step; the host caches values per key and
+would show the previous step's until it polled again.
+
+## The Mod page
+
+Two LFOs, one a row, each with Strut's modulator knobs: **KIND, RATE, AIM, DEPTH**. Strut's
+CURVE shapes a drum's fall and has no meaning for lights, so each LFO has one AIM and the
+page holds two.
+
+- **KIND:** Sine, Ramp and Square swing either way; Random holds a new value each cycle;
+  Kick jumps to full on every kick and falls over RATE's length; Level follows how loud the
+  music is.
+- **RATE:** 1/16, 1/8, 1/4, 1/2, then 1, 2, 4, 8 and 16 bars, always on the beat.
+- **AIM:** any Look knob (Scene, Color, Rate, Size, Trail, Fold, Shift, React), **Light**
+  (brightness) or **Turn** (rotation). Not the Sequence page's own knobs: the LFOs move what
+  the sequence chose.
+- **DEPTH** (−1 to +1) is how far and which way. On a knob with steps it is how many steps
+  the knob can move, all of them at full depth: Scene ±8 scenes, Color ±8 sets (both wrap
+  round), Rate ±6 of the seven rates, Turn ±3 quarter turns (wraps), the rest their whole
+  range. On Light it can only dim: full depth dips to dark at the LFO's low point.
+- **They never turn a knob** (as Strut and Quilt): each frame the render thread copies the
+  look, applies the sequence, then the LFOs, and draws that. The knobs show what was set.
+
+Rejected: Schwung's own Master FX LFOs (Master FX Settings). They live outside Viz's pages,
+and the user asked for Strut's setup on a page of Viz's own.
+
+## Knob pictures
+
+Every Look, Sequence and Mod knob draws a picture of what it does (`src/canvas.js`,
+`viz: {kind: "custom:viz"}`, `canvas_script` in module.json), in the hand of Strut's and
+Quilt's: one-pixel lines, and only time controls move (RATE, TRAIL and the LFOs' RATE, while
+touched or for 1.5 s after turning). Settings keeps the host's own. They were drawn and
+approved in a mockup first (`tools/gallery/pages.src.html`, built by `make_pages.mjs` into
+`build/pages.html`; the first draft, before the user's Random, BARS and RATE changes): the Move's screen pixel for pixel in Schwung's label font, beside a
+Matrix playing what the pages say.
+
+- **SCENE** draws the scene itself, a dot a pad, with its number. The thumbnails are each
+  scene's busiest frame (up to 40 lit pads) in its first 8 s, baked from the gallery
+  (`tools/gallery/make_canvas_data.mjs`, 8 bytes a scene) with the scene names, each colour
+  set's brightness and the device's 4x5 font. The tests fail if that block falls behind the
+  gallery. A soft scene draws a glow.
+- **COLOR** three swatches, each as bright as its colour, and the set's name. **RATE** a bar
+  with a tick a step. **SIZE** a corner of the grid with the size filled. **TRAIL** a light
+  and its trail. **FOLD** a mark folded the knob's way, mirror lines dotted. **SHIFT** three
+  colours trading places, and when. **REACT** a kick and what it does to a shape.
+- **STEP** the eight steps: the one being edited solid, a skipped one a dot, the one playing
+  underlined. **BARS** a length bar. **PLAY** a play sign and the loop's length. Random is a
+  die; Same says SAME.
+- **KIND** the LFO's shape, **RATE** that shape at its speed with the speed in figures,
+  **AIM** an arrow into a small picture of the target, **DEPTH** how far and which way.
+- **STEP and PLAY read the whole sequence** through one read-only key, `seq_now`
+  ("playing|steps|beats|bar", for example `2|1R100000|0|4`), declared as the pictures'
+  `viz.extra_keys` so the host polls it on the page's rotation.
+- A value that arrives as an index draws as the option it stands for.
+
+---
+
 ## The light engine: how 8x8 becomes beautiful
 
 ### Threads
@@ -691,8 +782,9 @@ the Matrix sits beside the Move. Scenes and the underglow sides rotate together.
 
 ## Control surface
 
-Two pages: page 1 holds the knobs on `root`, and one `{"level": "settings", "label":
-"Settings"}` link adds page 2. A flat `chain_params` list declares every key, because without
+Four pages: page 1 holds the knobs on `root`, and links to the `settings`, `sequence` and
+`mod` levels add pages 2 to 4, in that order (the user named the new ones the third and
+fourth pages). A flat `chain_params` list declares every key, because without
 it the Master FX cache reads only the first `params` array
 (`src/host/shadow_chain_mgmt.c:1711-1740`). Wayward is the working example
 (`wayward/src/dsp/wayward.c:1281-1335`). Schwung appends its own *My Presets* and *Module*
@@ -729,6 +821,33 @@ These shape the picture, and each one shows its effect straight away.
 | 6 | `turn` | TURN | **Rotation.** Enum: 0° / 90° / 180° / 270°. Default 0°. |
 | 7 | `edge` | EDGE | **Underglow.** Enum: Off / Glow (each side carries the picture's colour beside it) / Breathe (the beat pulses the whole ring). Default Glow. |
 | 8 | `nudge` | NUDGE | **Light timing.** −150 to +100 ms. It shifts the lights earlier or later to match the sound you hear. **Default −40 ms**: driven straight off the clock, the lights ran about 40 ms ahead of the speakers (probe Beat test). |
+
+---
+
+### Page 3: Sequence
+
+STEP, SCENE, BARS and PLAY over COLOR, RATE, SIZE and FOLD. The six step knobs are the chosen
+step's (keys `s1_scene` … `s8_fold`).
+
+| Knob | Key | Label | Behaviour |
+|------|-----|-------|-----------|
+| 1 | `step` | STEP | **Step to edit.** 1–8. Not saved. |
+| 2 | `sN_scene` | SCENE | **Step N scene.** Random, then the 106 scenes. Default Random. |
+| 3 | `sN_bars` | BARS | **Step N length.** Off, Random, 1 beat, 2 beats, 1 bar, 2, 4, 8 bars. Default 1 bar for step 1, Off for the rest. |
+| 4 | `play` | PLAY | **Play the sequence.** Off / On. Default Off. |
+| 5 | `sN_color` | COLOR | **Step N colour set.** Random, Same, then the nine sets. Default Random. |
+| 6 | `sN_rate` | RATE | **Step N steps, on the beat.** Random, Same, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/8, 1/16. Default Same. |
+| 7 | `sN_size` | SIZE | **Step N shape size.** Random, Same, 1–4. Default Same. |
+| 8 | `sN_fold` | FOLD | **Step N mirror fold.** Random, Same, Off, Sides, Top, Four, Eight. Default Same. |
+
+### Page 4: Mod
+
+| Knob | Key | Label | Behaviour |
+|------|-----|-------|-----------|
+| 1, 5 | `m1_kind`, `m2_kind` | KIND | **LFO shape.** Sine, Ramp, Square, Random, Kick, Level. Defaults Sine, Kick. |
+| 2, 6 | `m1_rate`, `m2_rate` | RATE | **LFO speed.** 1/16 … 16 bars. Defaults 1 bar, 1/4. |
+| 3, 7 | `m1_aim`, `m2_aim` | AIM | **LFO target.** Scene, Color, Rate, Size, Trail, Fold, Shift, React, Light, Turn. Defaults Color, Size. |
+| 4, 8 | `m1_depth`, `m2_depth` | DEPTH | **LFO depth.** −1 to +1. Default 0: the LFOs start silent. |
 
 ---
 
@@ -874,7 +993,10 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
    - **The reversal (2026-10-10):** the scene gallery, six pick rounds, and the 100
      geometric scenes ported to C with exact parity. The new Look page: COLOR, RATE, SIZE,
      TRAIL, FOLD, SHIFT, REACT.
-   - Next: the device pass with the 100 scenes.
+   - ~~Next: the device pass with the 100 scenes.~~ The user: "The scenes look right on the
+     Matrix" (2026-10-11).
+   - **The Sequence and Mod pages, and knob pictures** (2026-10-11), mocked up and approved
+     first. Next: their device pass.
 Versions 0.2.0–0.4.0 below are the organic plan. After the device pass they will be
 redrawn around the geometric set.
 
@@ -923,6 +1045,29 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
 - A kick loop fires low hits on the kicks and no high hits.
 - With the clock stopped, a 120 BPM kick loop gives an own beat that phase-locks within 4
   beats.
+
+**Sequence and Mod** (`test_sequence`, driving `seq.c` directly)
+- PLAY Off and LFOs at depth 0 leave the look untouched.
+- A one-bar step and a two-beat step alternate on the right beats; going back to beat 0
+  starts at step 1; a jump ahead lands where walking would.
+- Random draws the same at the same song position in two instances, draws widely (over 40
+  scenes in 2,000 beats), and stays inside each field's options; with every step Off nothing
+  plays.
+- A Square on Color swings both ways; Light only ever dims; Kick follows the kicks; a Ramp
+  on Turn reaches all four turns.
+- Through the plugin: the user's defaults, `seq_now` at rest and playing, and the new keys
+  round-tripping through `state` (STEP left out).
+
+**Pictures** (`tests/widgets.test.mjs`, through the host's own widget registry, frame and
+viz resolver)
+- Every option of every pictured knob draws inside its cell, on every step's page; next
+  options look different; an unanswered value draws nothing; an index draws as its option.
+- canvas.js knows every option list Viz serves, in order, and its generated block matches the
+  gallery.
+- STEP shows the playing step and which steps are on; PLAY the loop length; the LFO RATE its
+  own KIND; RATE, TRAIL and the LFO RATE move only while touched or just turned.
+- The plan test plans every STEP value with the host's planner: four pages, the Sequence page
+  exactly STEP, SCENE, BARS, PLAY, COLOR, RATE, SIZE, FOLD of that step.
 
 **Scenes**
 - **Parity** (`tests/parity_dump.mjs`, `tests/test_parity.c`). Node runs the gallery's own

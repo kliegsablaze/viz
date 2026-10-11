@@ -44,6 +44,7 @@ typedef struct {
     int mirror;   /* FOLD: Off Sides Top Four Eight */
     int shift;    /* SHIFT: Hold Bar Beat Kick */
     int react;    /* REACT: Off Glow Grow Flash Flip */
+    double steps_per_beat;   /* > 0: overrides RATE (the Sequence page's 2 and 4 bars) */
 } viz_shape_knobs_t;
 
 #define SHAPE_COLORS 9

@@ -12,6 +12,7 @@
     "audio_out": true,
     "chainable": true,
     "component_type": "audio_fx",
-    "requires_continuous_processing": true
+    "requires_continuous_processing": true,
+    "canvas_script": "canvas.js"
   }
 }
