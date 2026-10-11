@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viz Page Mockup</title>
+<style>
+:root {
+  --bg: #0d0d10; --panel: #17171c; --line: #2a2a33; --text: #e9e9ef; --dim: #8b8b98; --accent: #7aa7ff; --ok: #3ddc84;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+header { padding: 16px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+header .hint { color: var(--dim); flex: 1 1 300px; }
+button { font: inherit; color: var(--text); background: #24242c; border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: #444; }
+button.on { background: var(--accent); color: #000; border-color: var(--accent); }
+.top { display: grid; grid-template-columns: minmax(0, 700px) minmax(0, 1fr); gap: 16px; padding: 16px; }
+@media (max-width: 1100px) { .top { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.screen { background: #000; border-radius: 10px; padding: 14px; border: 1px solid #333; }
+.screen canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; }
+.knobs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.kn { background: #1f1f26; border: 1px solid var(--line); border-radius: 10px; padding: 8px; text-align: center; }
+.kn .lab { font-weight: 700; letter-spacing: .05em; font-size: 12px; }
+.kn .val { color: var(--accent); font-size: 12px; min-height: 18px; font-variant-numeric: tabular-nums; }
+.kn input { width: 100%; accent-color: var(--accent); }
+.what { margin-top: 12px; color: var(--dim); font-size: 13px; min-height: 40px; }
+.what b { color: var(--text); }
+.matrix canvas { width: 100%; max-width: 420px; height: auto; display: block; margin: 0 auto; }
+.status { margin: 10px 0; font-variant-numeric: tabular-nums; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+td, th { text-align: left; padding: 4px 6px; border-top: 1px solid var(--line); }
+th { color: var(--dim); font-weight: 500; }
+tr.sel td { background: #222232; }
+tr.now td:first-child { color: var(--ok); font-weight: 700; }
+tr.off td { color: #5d5d68; }
+.lfo { display: flex; gap: 10px; align-items: center; margin-top: 6px; color: var(--dim); font-size: 13px; }
+.lfo .bar { flex: 1; height: 8px; background: #24242c; border-radius: 4px; position: relative; overflow: hidden; }
+.lfo .bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); }
+.transport { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--dim); }
+.notes { margin: 0 16px 24px; }
+.notes li { margin: 4px 0; color: var(--dim); }
+.notes b { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Viz pages: Sequence and Mod (mockup)</h1>
+  <div class="hint">The black screen is the Move's display, pixel for pixel, in Schwung's own label font. Turn the eight knobs under it (or scroll over a cell). The Matrix on the right plays what the pages say, to the gallery's drum loop.</div>
+  <button id="sound">Sound on</button>
+</header>
+
+<div class="top">
+  <div class="panel">
+    <div class="tabs" id="tabs"></div>
+    <div class="screen"><canvas id="oled" width="640" height="320"></canvas></div>
+    <div class="knobs" id="knobs"></div>
+    <div class="what" id="what"></div>
+  </div>
+  <div class="panel matrix">
+    <canvas id="mx" width="420" height="420"></canvas>
+    <div class="status" id="status"></div>
+    <table id="steps"></table>
+    <div id="lfos"></div>
+    <div class="transport"><button id="restart">Back to bar 1</button>
+      <label>Tempo</label><input type="range" id="bpm" min="80" max="160" step="1" value="120"><span id="bpmv">120 BPM</span></div>
+  </div>
+</div>
+
+<ul class="notes">
+  <li><b>Sequence page.</b> STEP picks which of the 8 steps the other knobs edit. Each step has a scene, a length in BARS (Off skips it), and its own COLOR, RATE, SIZE and FOLD, each of which can be <b>Same</b> (follow the Look page). PLAY turns the sequence on. While Move plays, the steps follow the song's bars from bar 1, so the same bar always shows the same step.</li>
+  <li><b>Mod page.</b> Two LFOs, one a row, as on Strut's Mod view: KIND (Sine, Ramp, Square, Random, Kick, Level), RATE (1/16 to 16 bars, on the beat), AIM (what it moves), DEPTH (how far, and which way). They never turn a knob: the knob keeps what you set, and the picture moves around it.</li>
+  <li><b>The pictures</b> follow Strut and Quilt: one-pixel lines, small and centred, and only time controls move. SCENE draws the scene itself as an 8x8 grid of dots. Page 1's knobs get the same pictures, so the Look page comes almost for free.</li>
+</ul>
+
+<script>
+"use strict";
+/*@ENGINE@*/
+
+/* ---------------- the pages ---------------- */
+const FONT = /*@FONT@*/null;
+const W = 128, H = 64;
+const fb = new Uint8Array(W * H);
+const TAU = Math.PI * 2;
+const COLORS = KNOBS[1].opts, RATE_OPTS = KNOBS[2].opts, SIZE_OPTS = KNOBS[3].opts, TRAIL_OPTS = KNOBS[4].opts,
+  FOLD_OPTS = KNOBS[5].opts, SHIFT_OPTS = KNOBS[6].opts, REACT_OPTS = KNOBS[7].opts;
+const BARS_OPTS = ["Off", "1", "2", "4", "8", "16", "32"];
+const KINDS = ["Sine", "Ramp", "Square", "Random", "Kick", "Level"];
+const MRATES = ["1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars", "8 bars", "16 bars"];
+const MRATE_BEATS = [0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+const AIMS = ["Scene", "Color", "Rate", "Size", "Trail", "Fold", "Shift", "React", "Light", "Turn"];
+const same = (opts) => ["Same", ...opts];
+
+/* State: page 1 (Look), the eight steps, the two LFOs. */
+const look = { scene: 0, color: 2, rate: 2, size: 1, trail: 1, fold: 0, shift: 1, react: 1 };
+const seq = { play: 1, step: 0, steps: [] };
+const DEMO = [[0, 3], [1, 3], [6, 3], [18, 3]];   /* Pulse, Rings, Snake, Spiral, 2 bars each */
+for (let i = 0; i < 8; i++) seq.steps.push({ scene: DEMO[i] ? DEMO[i][0] : i * 12 % 100, bars: DEMO[i] ? 2 : 0, color: 0, rate: 0, size: 0, fold: 0 });
+seq.steps[2].color = 4; seq.steps[3].rate = 4;
+const mods = [{ kind: 0, rate: 4, aim: 1, depth: 0.5 }, { kind: 4, rate: 2, aim: 9, depth: 0 }];
+
+/* Each cell: label, full name, options (or a number range), get/set, picture. */
+const PAGES = {
+  Look: [
+    { label: "SCENE", name: "Scene", opts: SCENES.map((s) => s.name), get: () => look.scene, set: (v) => (look.scene = v), draw: (p, v) => wScene(p, v),
+      what: "Which picture. The cell draws the scene itself, a dot a pad, and its number." },
+    { label: "COLOR", name: "Colour set", opts: COLORS, get: () => look.color, set: (v) => (look.color = v), draw: (p, v) => wColor(p, v), what: "Three swatches, each as bright as its colour, and the set's name." },
+    { label: "RATE", name: "Steps, on the beat", opts: RATE_OPTS, get: () => look.rate, set: (v) => (look.rate = v), draw: (p, v, t) => wRate(p, v, t), what: "One bar with a tick a step; a dot walks the ticks while the knob is held." },
+    { label: "SIZE", name: "Shape size (pads)", opts: SIZE_OPTS, get: () => look.size, set: (v) => (look.size = v), draw: (p, v) => wSize(p, v), what: "A corner of the grid, the shape's size filled in." },
+    { label: "TRAIL", name: "Trail length", opts: TRAIL_OPTS, get: () => look.trail, set: (v) => (look.trail = v), draw: (p, v, t) => wTrail(p, v, t), what: "A light moving, and the trail it leaves." },
+    { label: "FOLD", name: "Mirror fold", opts: FOLD_OPTS, get: () => look.fold, set: (v) => (look.fold = v), draw: (p, v) => wFold(p, v), what: "One mark in the corner, folded the way the knob says, with the mirror lines dotted." },
+    { label: "SHIFT", name: "Colour swap", opts: SHIFT_OPTS, get: () => look.shift, set: (v) => (look.shift = v), draw: (p, v) => wShift(p, v), what: "The three colours trading places, and when." },
+    { label: "REACT", name: "Kick reaction", opts: REACT_OPTS, get: () => look.react, set: (v) => (look.react = v), draw: (p, v) => wReact(p, v), what: "A kick, and what it does to a shape." },
+  ],
+  Sequence: [
+    { label: "STEP", name: "Step to edit", opts: ["1", "2", "3", "4", "5", "6", "7", "8"], get: () => seq.step, set: (v) => (seq.step = v), draw: (p, v, t) => wStep(p, v, t),
+      what: "The eight steps. The one you edit is solid, a skipped one (BARS Off) is a dot, and the one playing has a line under it." },
+    { label: "SCENE", name: () => `Step ${seq.step + 1} scene`, opts: SCENES.map((s) => s.name), get: () => st().scene, set: (v) => (st().scene = v), draw: (p, v) => wScene(p, v),
+      what: "This step's scene, drawn as on the Look page." },
+    { label: "BARS", name: () => `Step ${seq.step + 1} length`, opts: BARS_OPTS.map((b) => (b === "Off" ? "Off (skip)" : b === "1" ? "1 bar" : b + " bars")), get: () => st().bars, set: (v) => (st().bars = v), draw: (p, v) => wBars(p, v),
+      what: "How long this step plays. Off skips it, so the sequence can be any length." },
+    { label: "PLAY", name: "Play the sequence", opts: ["Off", "On"], get: () => seq.play, set: (v) => (seq.play = v), draw: (p, v, t) => wPlay(p, v, t),
+      what: "On: the steps take over the Look page's knobs (except where a step says Same). The figure is the whole loop's length." },
+    { label: "COLOR", name: () => `Step ${seq.step + 1} colour set`, opts: same(COLORS), get: () => st().color, set: (v) => (st().color = v), draw: (p, v) => (v ? wColor(p, v - 1) : wSame(p)), what: "This step's colours, or Same: whatever the Look page says." },
+    { label: "RATE", name: () => `Step ${seq.step + 1} steps on the beat`, opts: same(RATE_OPTS), get: () => st().rate, set: (v) => (st().rate = v), draw: (p, v, t) => (v ? wRate(p, v - 1, t) : wSame(p)), what: "This step's speed, or Same." },
+    { label: "SIZE", name: () => `Step ${seq.step + 1} shape size`, opts: same(SIZE_OPTS), get: () => st().size, set: (v) => (st().size = v), draw: (p, v) => (v ? wSize(p, v - 1) : wSame(p)), what: "This step's size, or Same." },
+    { label: "FOLD", name: () => `Step ${seq.step + 1} mirror fold`, opts: same(FOLD_OPTS), get: () => st().fold, set: (v) => (st().fold = v), draw: (p, v) => (v ? wFold(p, v - 1) : wSame(p)), what: "This step's fold, or Same." },
+  ],
+  Mod: [0, 1].flatMap((j) => [
+    { label: "KIND", name: `LFO ${j + 1} shape`, opts: KINDS, get: () => mods[j].kind, set: (v) => (mods[j].kind = v), draw: (p, v) => wKind(p, v),
+      what: "Sine, Ramp and Square swing either way; Random jumps to a new value each cycle; Kick jumps on every kick and falls over RATE; Level follows how loud the music is." },
+    { label: "RATE", name: `LFO ${j + 1} speed`, opts: MRATES, get: () => mods[j].rate, set: (v) => (mods[j].rate = v), draw: (p, v, t) => wMRate(p, v, t, j),
+      what: "One cycle per 16th up to one per 16 bars, always on the beat. It moves while held, at its speed." },
+    { label: "AIM", name: `LFO ${j + 1} target`, opts: AIMS, get: () => mods[j].aim, set: (v) => (mods[j].aim = v), draw: (p, v) => wAim(p, v),
+      what: "What it moves: any Look knob, the brightness (Light) or the picture's rotation (Turn). An arrow into a small picture of it." },
+    { label: "DEPTH", name: `LFO ${j + 1} depth`, range: [-1, 1], get: () => mods[j].depth, set: (v) => (mods[j].depth = v), draw: (p, v) => wDepth(p, v),
+      what: "How far, and which way. Centre is none. On a knob with steps it is how many steps it can move: all of them at full depth (Scene: 8 scenes either way)." },
+  ]),
+};
+const st = () => seq.steps[seq.step];
+
+/* ---------------- pixels ---------------- */
+function pset(x, y) { if (x >= 0 && y >= 0 && x < W && y < H) fb[y * W + x] = 1; }
+function pclr(x, y) { if (x >= 0 && y >= 0 && x < W && y < H) fb[y * W + x] = 0; }
+function textW(s) { let w = 0; for (const ch of s) { const g = FONT[ch] || FONT[" "]; w += g[0] + 1; } return Math.max(0, w - 1); }
+function print(x, y, s, ink = 1) { for (const ch of s.toUpperCase()) { const g = FONT[ch] || FONT[" "];
+  for (const [i, j] of g[1]) (ink ? pset : pclr)(x + i, y + j); x += g[0] + 1; } }
+/* A pen for one 32x15 cell; (0,0) is its top left. Everything clips to the cell. */
+function pen(ox, oy) {
+  const p = {
+    px(x, y) { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < 32 && y >= 0 && y < 15) pset(ox + x, oy + y); },
+    h(x0, x1, y) { for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) p.px(x, y); },
+    v(x, y0, y1) { for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) p.px(x, y); },
+    box(x0, y0, x1, y1) { p.h(x0, x1, y0); p.h(x0, x1, y1); p.v(x0, y0, y1); p.v(x1, y0, y1); },
+    fill(x0, y0, x1, y1) { for (let y = y0; y <= y1; y++) p.h(x0, x1, y); },
+    dots(x0, x1, y, every = 2) { for (let x = x0; x <= x1; x += every) p.px(x, y); },
+    dither(x0, y0, x1, y1, lvl) { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (BAYER[(y & 3) * 4 + (x & 3)] < lvl * 16) p.px(x, y); },
+    line(x0, y0, x1, y1) { const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1); for (let i = 0; i <= n; i++) p.px(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n); },
+    curve(x0, x1, f) { let py = null; for (let x = x0; x <= x1; x++) { const y = Math.round(f(x)); if (py !== null && Math.abs(y - py) > 1) p.v(x, py + Math.sign(y - py), y); p.px(x, y); py = y; } },
+    text(s, y, x) { const w = textW(s.toUpperCase()); print(ox + (x != null ? x : Math.round((32 - w) / 2)), oy + y, s); },
+  };
+  return p;
+}
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+function arrowR(p, x, y) { p.px(x - 1, y - 1); p.px(x - 1, y + 1); p.px(x - 2, y - 2); p.px(x - 2, y + 2); }
+
+/* ---------------- the pictures ---------------- */
+/* Each scene's thumbnail: its busiest frame (up to 40 lit pads) in its first 8 s,
+ * with trail, fold, swap and kick reaction off. On the Move these would be
+ * baked into canvas.js, 8 bytes a scene. */
+const THUMB = [];
+function bakeThumbs() {
+  const save = { ...knob };
+  Object.assign(knob, { color: 7, rate: 2, size: 1, trail: 0, mirror: 0, shift: 0, react: 0 });
+  const cv = { getContext: () => null, width: 0 };
+  const ps = SCENES.map((_, i) => new Player(i, cv)), best = SCENES.map(() => ({ score: -1, bits: null }));
+  for (let f = 0; f < 240; f++) {
+    const t = f / 30, beats = t * 2;
+    listen(beats, 1 / 30);
+    ps.forEach((pl, i) => { pl.frame(beats, 1 / 30, t, true);
+      const bits = new Uint8Array(64); let n = 0;
+      for (let k = 0; k < 64; k++) if (pl.disp[k * 3] + pl.disp[k * 3 + 1] + pl.disp[k * 3 + 2] > 90) { bits[k] = 1; n++; }
+      const score = n <= 40 ? n : 80 - n;
+      if (score > best[i].score) best[i] = { score, bits }; });
+  }
+  best.forEach((b, i) => (THUMB[i] = b.bits));
+  Object.assign(knob, save);
+  Object.assign(feat, { kick: 0, snare: 0, hat: 0, bass: 0, kickCount: 0, last16: -1, log: [] });
+}
+function wScene(p, v) {                          /* the scene, a dot a pad, and its number */
+  const b = THUMB[v];
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (b && b[y * 8 + x]) p.px(2 + x * 2, y * 2);
+  p.px(1, 0); p.px(1, 14); p.px(17, 0); p.px(17, 14);
+  p.text(String(v + 1), 5, 20 + (v + 1 < 10 ? 3 : v + 1 < 100 ? 0 : -2));
+}
+const luma = (c) => (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) / 255;
+function wColor(p, v) {                          /* three swatches as bright as their colours, and the name */
+  const name = COLORS[v], pal = PALETTES[name];
+  if (!pal) { for (let x = 3; x <= 28; x++) for (let y = 0; y <= 5; y++) if (BAYER[(y & 3) * 4 + (x & 3)] < (0.5 + 0.45 * Math.sin(x * 0.55)) * 16) p.px(x, y); }
+  else pal.forEach((c, i) => { const x0 = 4 + i * 9; p.box(x0, 0, x0 + 6, 5); p.dither(x0 + 1, 1, x0 + 5, 4, 0.15 + 0.85 * luma(c)); });
+  p.text(name, 9);
+}
+function wSame(p) { p.text("SAME", 2); p.dots(6, 25, 10, 2); p.px(16, 11); p.px(15, 12); p.px(17, 12); }
+function wRate(p, v, t) {                        /* one bar, a tick a step */
+  const n = [1, 2, 4, 8, 16][v];
+  p.text(RATE_OPTS[v].replace(" ", ""), 0);
+  p.h(3, 28, 14);
+  for (let i = 0; i < n; i++) { const x = 3 + Math.round(i * 25 / n); p.v(x, i === 0 ? 9 : 11, 13); }
+  p.v(28, 9, 13);
+  if (t.awake) { const i = Math.floor(t.beats * RATES[v]) % n, x = 3 + Math.round(i * 25 / n); p.px(x, 7); p.px(x + 1, 7); }
+}
+function wSize(p, v) {                           /* a 4x4 corner of the grid, the shape's size filled */
+  const n = v + 1;
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const x = 10 + i * 3, y = 1 + j * 3;
+    if (i < n && j < n) { p.fill(x, y, x + 1, y + 1); } else p.px(x, y); }
+  p.text(String(n), 5, 24);
+}
+function wTrail(p, v, t) {                       /* a light and the trail it leaves */
+  const L = [0, 4, 9, 15, 22][v];
+  const x0 = t.awake ? 6 + Math.round((0.5 + 0.5 * Math.sin(t.time * 3)) * 20) : 26, y = 6;
+  p.fill(x0, y, x0 + 1, y + 1);
+  const dir = t.awake ? Math.sign(Math.cos(t.time * 3)) || 1 : 1;
+  for (let k = 1; k <= L; k++) {                 /* solid near the light, sparser further back */
+    const every = k <= L / 3 ? 1 : k <= 2 * L / 3 ? 2 : 3;
+    if (k % every === 0) p.px(x0 - k * dir + (dir < 0 ? 1 : 0), y + (k <= L / 3 ? 1 : 0)); if (k <= L / 3) p.px(x0 - k * dir + (dir < 0 ? 1 : 0), y); }
+  p.text(TRAIL_OPTS[v], 10);
+}
+function foldBits(m) {                           /* a mark in the corner of a 12x12 grid, folded as the engine does */
+  const mark = [[1, 1], [2, 1], [3, 1], [4, 1], [1, 2], [1, 3], [3, 3], [4, 4]].concat([[2, 4]]);
+  const src = new Uint8Array(144); mark.forEach(([x, y]) => (src[y * 12 + x] = 1));
+  if (m === 0) return src;
+  const out = new Uint8Array(144);
+  for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { let sx = x, sy = y;
+    if ((m === 1 || m >= 3) && sx > 5) sx = 11 - sx;
+    if ((m === 2 || m >= 3) && sy > 5) sy = 11 - sy;
+    if (m === 4 && sx > sy) { const q = sx; sx = sy; sy = q; }
+    out[y * 12 + x] = src[sy * 12 + sx]; }
+  return out;
+}
+function wFold(p, v) {
+  const b = foldBits(v), ox = 10, oy = 1;
+  for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) if (b[y * 12 + x]) p.px(ox + x, oy + y);
+  if (v === 1 || v >= 3) for (let y = 0; y < 13; y += 2) p.px(ox + 5.5, oy + y);
+  if (v === 2 || v >= 3) for (let x = 0; x < 13; x += 2) p.px(ox + x, oy + 5.5);
+  if (v === 4) for (let k = 0; k < 12; k += 2) p.px(ox + k, oy + k);
+  p.box(ox - 2, oy - 1, ox + 12, oy + 12);
+}
+function wShift(p, v) {                          /* three colours trading places, and when */
+  const xs = [5, 13, 21];
+  p.fill(xs[0], 0, xs[0] + 5, 4); p.dither(xs[1], 0, xs[1] + 5, 4, 0.5); p.box(xs[2], 0, xs[2] + 5, 4);
+  if (v > 0) { p.h(8, 24, 6); arrowR(p, 24, 6); }
+  p.text(SHIFT_OPTS[v], 9);
+}
+function wReact(p, v) {                          /* a kick, and what it does to a shape */
+  p.v(3, 2, 12); p.curve(3, 10, (x) => 12 - 10 * Math.exp(-(x - 3) / 1.6));
+  p.h(12, 15, 7); arrowR(p, 15, 7);
+  const x0 = 18, y0 = 1, x1 = 30, y1 = 13, cx = 24, cy = 7;
+  if (v === 3) { p.dither(x0, y0, x1, y1, 0.35); p.fill(cx - 1, cy - 1, cx + 1, cy + 1); return; }
+  if (v === 4) { p.fill(x0, y0, x1, y1); for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) pclrCell(p, x, y); return; }
+  p.box(x0, y0, x1, y1);
+  if (v === 0) p.fill(cx - 1, cy - 1, cx + 1, cy + 1);
+  if (v === 1) { p.fill(cx - 1, cy - 1, cx + 1, cy + 1); [[0, -3], [0, 3], [-3, 0], [3, 0], [-3, -3], [3, 3], [-3, 3], [3, -3]].forEach(([dx, dy]) => p.px(cx + dx, cy + dy)); }
+  if (v === 2) { p.fill(cx - 2, cy - 2, cx + 2, cy + 2); p.box(cx - 4, cy - 4, cx + 4, cy + 4); }
+}
+let cellOrigin = [0, 0];
+function pclrCell(p, x, y) { pclr(cellOrigin[0] + x, cellOrigin[1] + y); }
+function wStep(p, v, t) {                        /* the eight steps */
+  for (let i = 0; i < 8; i++) { const x = 1 + i * 4, s = seq.steps[i];
+    if (i === v) p.fill(x, 2, x + 2, 10);
+    else if (s.bars) p.box(x, 2, x + 2, 10);
+    else p.px(x + 1, 10);
+    if (seq.play && i === t.playing) p.h(x, x + 2, 13); }
+}
+function wBars(p, v) {                           /* how long the step plays */
+  if (!v) { p.text("OFF", 1); p.dots(3, 28, 11, 2); return; }
+  const bars = +BARS_OPTS[v], w = Math.round(v / 6 * 25);
+  p.text(bars + (bars === 1 ? "BAR" : "BAR"), 0);
+  p.fill(3, 9, 3 + w, 11); p.dots(4 + w, 28, 11, 2); p.v(3, 8, 12);
+}
+function wPlay(p, v, t) {
+  const tri = (x0, solid) => { for (let k = 0; k <= 5; k++) { if (solid) p.v(x0 + k, 1 + k, 11 - k); else { p.px(x0 + k, 1 + k); p.px(x0 + k, 11 - k); } } if (!solid) p.v(x0, 1, 11); };
+  if (!v) { tri(13, false); return; }
+  tri(4, t.beatOn); p.text(String(t.total || 0), 1, 14); p.text("BAR", 8, 14);
+}
+function lfoShape(kind, u, seed = 0) {           /* one cycle, -1..1 (Kick and Level 0..1) */
+  const ph = u - Math.floor(u), n = Math.floor(u);
+  if (kind === 0) return Math.sin(ph * TAU);
+  if (kind === 1) return ph * 2 - 1;
+  if (kind === 2) return ph < 0.5 ? 1 : -1;
+  if (kind === 3) return hash01(n + seed) * 2 - 1;
+  if (kind === 4) return Math.exp(-4 * ph);
+  return 0.35 + 0.3 * Math.sin(u * 9.1) * Math.sin(u * 3.3 + 1) + 0.2 * hash01(Math.floor(u * 8));
+}
+function hash01(i) { let x = (i * 2654435761) >>> 0; x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13; return (x >>> 0) / 4294967296; }
+function wKind(p, v) {
+  const mid = 7, amp = v >= 4 ? 10 : 5;
+  if (v === 4) { for (const x0 of [4, 16]) { p.v(x0, 2, 12); p.curve(x0, x0 + 11, (x) => 12 - 10 * Math.exp(-(x - x0) / 2.5)); } p.h(3, 28, 13); return; }
+  if (v === 5) { for (let x = 3; x <= 28; x++) { const h = Math.round(2 + 9 * Math.abs(Math.sin(x * 0.7) * Math.sin(x * 0.23 + 1))); p.v(x, 12 - h, 12); x++; } return; }
+  p.dots(3, 28, mid, 3);
+  p.curve(3, 28, (x) => { const u = (x - 3) / 25 * 2 + 0.0001; const m = lfoShape(v, u, 3); return mid - amp * m; });
+}
+function wMRate(p, v, t, j) {
+  const kind = mods[j].kind, cyc = Math.max(0.5, Math.min(4, 2 / Math.sqrt(MRATE_BEATS[v])));
+  const ph = t.awake ? t.beats / MRATE_BEATS[v] : 0;
+  p.curve(3, 28, (x) => { const u = ((x - 3) / 25) * cyc - ph; let m = lfoShape(kind, u, 3); if (kind >= 4) m = m * 2 - 1; return 3 - 2.5 * m; });
+  p.text(MRATES[v].replace(" bars", "BAR").replace(" bar", "BAR"), 9);
+}
+const MINI = {                                    /* a small picture of each target, right of the arrow */
+  Scene(p) { p.box(14, 1, 26, 13); for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if ((x + y) % 3 === 0) p.fill(16 + x * 3, 3 + y * 3, 17 + x * 3, 4 + y * 3); },
+  Color(p) { p.fill(14, 4, 17, 9); p.dither(20, 4, 23, 9, 0.5); p.box(26, 4, 29, 9); },
+  Rate(p) { p.h(14, 29, 12); for (let x = 14; x <= 29; x += 5) p.v(x, x === 14 ? 6 : 9, 11); },
+  Size(p) { p.fill(19, 5, 22, 8); p.box(16, 2, 25, 11); },
+  Trail(p) { p.fill(27, 6, 28, 7); for (let x = 14; x < 27; x++) if (x % 2 || x > 22) p.px(x, 6); },
+  Fold(p) { const b = foldBits(3); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) if (b[y * 12 + x]) p.px(15 + x, 1 + y); },
+  Shift(p) { p.fill(14, 2, 18, 6); p.box(24, 2, 28, 6); p.line(16, 8, 26, 12); p.line(26, 8, 16, 12); },
+  React(p) { p.v(16, 2, 12); p.curve(16, 28, (x) => 12 - 10 * Math.exp(-(x - 16) / 2)); },
+  Light(p) { const cx = 21, cy = 7; p.box(cx - 2, cy - 2, cx + 2, cy + 2); [[0, -5], [0, 5], [-5, 0], [5, 0], [-4, -4], [4, 4], [-4, 4], [4, -4]].forEach(([dx, dy]) => { p.px(cx + dx, cy + dy); p.px(cx + dx * 0.8, cy + dy * 0.8); }); },
+  Turn(p) { const cx = 21, cy = 7, r = 5; for (let a = 0.3; a < 5.6; a += 0.2) p.px(cx + r * Math.cos(a), cy + r * Math.sin(a)); p.px(cx + 5, cy - 2); p.px(cx + 6, cy - 3); p.px(cx + 4, cy - 3); },
+};
+function wAim(p, v) { p.h(2, 9, 7); arrowR(p, 9, 7); MINI[AIMS[v]](p); }
+function wDepth(p, v) {                          /* how far, and which way, from the middle */
+  const d = Math.round(v * 12);
+  p.v(16, 2, 12);
+  if (d) { const x1 = 16 + d, sg = Math.sign(d); p.h(16, x1, 6); p.h(16, x1, 8); p.v(x1, 5, 9); p.px(x1 + sg, 7); }
+  p.dots(4, 28, 13, 3);
+}
+
+/* ---------------- the screen ---------------- */
+let tab = "Sequence";
+const touched = { i: -1, until: 0 };
+function drawScreen(t) {
+  fb.fill(0);
+  const cells = PAGES[tab], names = ["Look", "Settings", "Sequence", "Mod"];
+  /* header: the page, or the knob being turned and its value */
+  const now = performance.now();
+  if (touched.i >= 0 && now < touched.until) {
+    const c = cells[touched.i], nm = typeof c.name === "function" ? c.name() : c.name;
+    print(0, 0, (nm + "  " + valueText(c)).toUpperCase().slice(0, 30));
+  } else {
+    print(0, 0, tab === "Sequence" ? `SEQUENCE   STEP ${seq.step + 1}` : tab === "Look" ? "VIZ" : tab.toUpperCase());
+  }
+  /* bank bar: four pages, this one's segment two rows tall */
+  const pi = names.indexOf(tab);
+  for (let i = 0; i < 4; i++) { const x0 = i * 32 + 1, x1 = i * 32 + 30; for (let x = x0; x <= x1; x++) { pset(x, 6); if (i === pi) pset(x, 7); } }
+  cells.forEach((c, i) => {
+    const col = i % 4, row = i >> 2, x = col * 32, y = row ? 33 : 9, ly = row ? 48 : 24;
+    cellOrigin = [x, y];
+    c.draw(pen(x, y), c.get(), { ...t, awake: touched.i === i && now < touched.until + 1500 });
+    const hot = touched.i === i && now < touched.until;
+    if (hot) for (let yy = ly; yy < ly + 7; yy++) for (let xx = x + 1; xx < x + 31; xx++) pset(xx, yy);
+    print(x + Math.round((32 - textW(c.label)) / 2), ly + 1, c.label, hot ? 0 : 1);
+  });
+  for (let x = 0; x < W; x++) if (x % 2 === 0) pset(x, 55);
+  const cv = document.getElementById("oled"), g = cv.getContext("2d"), s = cv.width / W;
+  g.fillStyle = "#000"; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = "#dfe8ff";
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (fb[y * W + x]) g.fillRect(x * s, y * s, s - 0.6, s - 0.6);
+}
+function valueText(c) {
+  const v = c.get();
+  if (c.range) return (v > 0 ? "+" : "") + Math.round(v * 100) + "%";
+  return c.opts[v];
+}
+
+/* ---------------- the knobs under the screen ---------------- */
+const knobBox = document.getElementById("knobs"), whatBox = document.getElementById("what");
+let knobEls = [];
+function buildKnobs() {
+  knobBox.innerHTML = ""; knobEls = [];
+  PAGES[tab].forEach((c, i) => {
+    const el = document.createElement("div"); el.className = "kn";
+    const max = c.range ? 100 : c.opts.length - 1, min = c.range ? -100 : 0;
+    el.innerHTML = `<div class="lab">${c.label}</div><input type="range" min="${min}" max="${max}" step="1"><div class="val"></div>`;
+    const inp = el.querySelector("input");
+    const sync = () => { inp.value = c.range ? Math.round(c.get() * 100) : c.get(); el.querySelector(".val").textContent = valueText(c); };
+    inp.addEventListener("input", () => { c.set(c.range ? +inp.value / 100 : +inp.value); touch(i); refreshAll(); });
+    inp.addEventListener("pointerdown", () => touch(i));
+    knobBox.appendChild(el); knobEls.push(sync); sync();
+  });
+}
+function touch(i) { touched.i = i; touched.until = performance.now() + 1500; const c = PAGES[tab][i];
+  whatBox.innerHTML = `<b>${c.label}</b> (${typeof c.name === "function" ? c.name() : c.name}): ${c.what}`; }
+function refreshAll() { knobEls.forEach((f) => f()); renderSteps(); }
+document.getElementById("oled").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const r = e.target.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  const i = Math.min(3, Math.floor(x / 32)) + (y > 32 ? 4 : 0), c = PAGES[tab][i], d = e.deltaY < 0 ? 1 : -1;
+  if (c.range) c.set(Math.max(-1, Math.min(1, Math.round((c.get() + d * 0.05) * 100) / 100)));
+  else c.set(Math.max(0, Math.min(c.opts.length - 1, c.get() + d)));
+  touch(i); refreshAll();
+}, { passive: false });
+const tabsEl = document.getElementById("tabs");
+["Look", "Sequence", "Mod"].forEach((n) => { const b = document.createElement("button"); b.textContent = n === "Look" ? "Page 1: Look" : n === "Sequence" ? "Page 3: Sequence" : "Page 4: Mod";
+  b.onclick = () => { tab = n; [...tabsEl.children].forEach((x) => x.classList.toggle("on", x === b)); touched.i = -1; whatBox.textContent = ""; buildKnobs(); };
+  if (n === tab) b.classList.add("on"); tabsEl.appendChild(b); });
+
+/* ---------------- what plays ---------------- */
+function seqAt(beats) {                          /* the step for this bar, following the song from bar 1 */
+  const act = seq.steps.map((s, i) => ({ i, bars: s.bars ? +BARS_OPTS[s.bars] : 0 })).filter((s) => s.bars);
+  const total = act.reduce((a, s) => a + s.bars, 0);
+  if (!seq.play || !total) return { step: -1, total, barIn: 0, bars: 0 };
+  let b = Math.floor(beats / BAR) % total;
+  for (const s of act) { if (b < s.bars) return { step: s.i, total, barIn: b, bars: s.bars }; b -= s.bars; }
+  return { step: -1, total, barIn: 0, bars: 0 };
+}
+const lfoNow = [0, 0];
+function lfoValue(j, beats) {
+  const m = mods[j], per = MRATE_BEATS[m.rate];
+  if (m.kind === 4) { const since = feat.lastKickBeat != null ? beats - feat.lastKickBeat : 99; return Math.exp(-4 * Math.max(0, since) / per); }
+  if (m.kind === 5) return Math.min(1, 0.6 * feat.kick + 0.5 * feat.bass + 0.4 * feat.snare + 0.2 * feat.hat);
+  return lfoShape(m.kind, beats / per, j * 7);
+}
+const SPAN = { Scene: 8, Color: 8, Rate: 4, Size: 3, Trail: 4, Fold: 4, Shift: 3, React: 4, Turn: 3 };
+const WRAP = { Scene: 100, Color: 9, Turn: 4 };
+const KEY = { Scene: "scene", Color: "color", Rate: "rate", Size: "size", Trail: "trail", Fold: "fold", Shift: "shift", React: "react" };
+const LIMIT = { color: 9, rate: 5, size: 4, trail: 5, fold: 5, shift: 4, react: 5 };
+
+const mx = new Player(0, document.getElementById("mx"));
+let curScene = 0, lastBeat = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  const beats = beatsNow(), time = now / 1000;
+  const kc = feat.kickCount; listen(beats, dt); if (feat.kickCount !== kc) feat.lastKickBeat = beats;
+  const eff = { ...look }, sq = seqAt(beats);
+  if (sq.step >= 0) { const s = seq.steps[sq.step];
+    eff.scene = s.scene; if (s.color) eff.color = s.color - 1; if (s.rate) eff.rate = s.rate - 1; if (s.size) eff.size = s.size - 1; if (s.fold) eff.fold = s.fold - 1; }
+  let light = 1, turn = 0;
+  mods.forEach((m, j) => { const v = lfoValue(j, beats); lfoNow[j] = v; if (!m.depth) return;
+    const aim = AIMS[m.aim];
+    if (aim === "Light") { light *= Math.max(0, Math.min(1, 1 + m.depth * (m.kind >= 4 ? v - 1 : v) )); return; }
+    const off = Math.round(m.depth * v * SPAN[aim]);
+    if (aim === "Turn") { turn = ((turn + off) % 4 + 4) % 4; return; }
+    const k = KEY[aim], n = aim === "Scene" ? 100 : LIMIT[k];
+    eff[k] = WRAP[aim] ? (((eff[k] + off) % n) + n) % n : Math.max(0, Math.min(n - 1, eff[k] + off)); });
+  Object.assign(knob, { color: eff.color, rate: eff.rate, size: eff.size, trail: eff.trail, mirror: eff.fold, shift: eff.shift, react: eff.react });
+  if (eff.scene !== curScene) { curScene = eff.scene; mx.setScene(curScene); }
+  mx.frame(beats, dt, time, true);
+  const keep = mx.disp, out = new Float32Array(192);
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { let sx = x, sy = y;
+    for (let q = 0; q < turn; q++) { const tx = sy, ty = 7 - sx; sx = tx; sy = ty; }
+    for (let c = 0; c < 3; c++) out[(y * 8 + x) * 3 + c] = keep[(sy * 8 + sx) * 3 + c] * light; }
+  mx.disp = out; mx.paint(); mx.disp = keep;
+  drawScreen({ beats, time, playing: sq.step, total: sq.total, beatOn: beats % 1 < 0.5 });
+  status(sq, eff, beats);
+  requestAnimationFrame(frame);
+}
+function status(sq, eff, beats) {
+  const bar = Math.floor(beats / BAR) + 1;
+  document.getElementById("status").innerHTML = sq.step >= 0
+    ? `Bar ${bar} · step <b>${sq.step + 1}</b>, bar ${sq.barIn + 1} of ${sq.bars} · <b>${SCENES[eff.scene].name}</b> in ${COLORS[eff.color]}, ${RATE_OPTS[eff.rate]}`
+    : `Bar ${bar} · sequence ${seq.play ? "has no steps (all Off)" : "off"} · <b>${SCENES[eff.scene].name}</b> in ${COLORS[eff.color]}`;
+  if (sq.step !== lastShown) { lastShown = sq.step; renderSteps(); }
+  document.querySelectorAll(".lfo i").forEach((el, j) => { const v = mods[j].kind >= 4 ? lfoNow[j] : (lfoNow[j] + 1) / 2;
+    el.style.left = "0"; el.style.width = Math.round(v * 100) + "%"; });
+}
+let lastShown = -2;
+function renderSteps() {
+  const sq = seqAt(beatsNow()), sm = (v, opts) => (v ? opts[v - 1] : "Same");
+  document.getElementById("steps").innerHTML = "<tr><th>Step</th><th>Scene</th><th>Bars</th><th>Colour</th><th>Rate</th><th>Size</th><th>Fold</th></tr>" +
+    seq.steps.map((s, i) => `<tr class="${i === seq.step ? "sel" : ""} ${i === sq.step ? "now" : ""} ${s.bars ? "" : "off"}"><td>${i + 1}${i === sq.step ? " ▶" : ""}</td><td>${SCENES[s.scene].name}</td><td>${BARS_OPTS[s.bars]}</td><td>${sm(s.color, COLORS)}</td><td>${sm(s.rate, RATE_OPTS)}</td><td>${sm(s.size, SIZE_OPTS)}</td><td>${sm(s.fold, FOLD_OPTS)}</td></tr>`).join("");
+  document.getElementById("lfos").innerHTML = mods.map((m, j) => `<div class="lfo">LFO ${j + 1}: ${KINDS[m.kind]} ${MRATES[m.rate]} → ${AIMS[m.aim]} ${m.depth ? (m.depth > 0 ? "+" : "") + Math.round(m.depth * 100) + "%" : "(depth 0: off)"}<div class="bar"><i></i></div></div>`).join("");
+}
+
+document.getElementById("sound").onclick = (e) => {
+  if (actx) { stopSound(); e.target.textContent = "Sound on"; e.target.classList.remove("on"); }
+  else { startSound(); e.target.textContent = "Sound off"; e.target.classList.add("on"); }
+};
+document.getElementById("restart").onclick = () => { if (actx) { stopSound(); t0 = performance.now(); startSound(); } else t0 = performance.now(); feat.last16 = -1; };
+document.getElementById("bpm").addEventListener("input", (e) => { const b = beatsNow(); BPM = +e.target.value;
+  document.getElementById("bpmv").textContent = BPM + " BPM";
+  if (actx) aStart = actx.currentTime - b * 60 / BPM; else t0 = performance.now() - b * 60000 / BPM; });
+
+bakeThumbs();
+t0 = performance.now();
+buildKnobs(); renderSteps();
+let lastT = performance.now();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
