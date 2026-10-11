@@ -27,7 +27,7 @@ for (const p of chainParams) {
 
 // Two pages, Look then Settings, eight knobs each, in the designed order.
 const pages = planPages({ hierarchy, chainParams, visible: () => true }).pages.filter((p) => Array.isArray(p.keys));
-const look = ["scene", "color", "flow", "grow", "bloom", "react", "warp", "drift"];
+const look = ["scene", "color", "rate", "size", "trail", "fold", "shift", "react"];
 const settings = ["mode", "power", "light", "grid", "cycle", "turn", "edge", "nudge"];
 check(pages.length === 2, `2 knob pages, got ${pages.length}: ${pages.map((p) => p.title).join(", ")}`);
 check(JSON.stringify(pages[0]?.keys) === JSON.stringify(look), `page 1 is ${JSON.stringify(pages[0]?.keys)}`);

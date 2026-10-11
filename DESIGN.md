@@ -1,12 +1,13 @@
 # Viz
 
-*Viz grows living light on a Matrix out of whatever the Move is playing. Its pictures are
-abstract and organic: they breathe with the beat, listen to the mix, and keep changing over a
-whole song.*
+*Viz turns a Matrix into a light show for whatever the Move is playing: bold, geometric shapes
+in clear colours, stepping on the beat, with eight knobs you can play like an instrument.*
 
-**Status:** design, with the device probe done (2026-10-10). No Viz code yet. Written against
-Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's Matrix runs Matrix
-OS **3.2**.
+**Status:** 0.1.0 built and installed. On 2026-10-10 the user turned the show from organic
+pictures to geometric scenes (see *The aesthetic brief*). The 100 scenes chosen in the scene
+gallery are ported to C with exact parity, and a device pass with the new scenes is next.
+Written against Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's
+Matrix runs Matrix OS **3.2**.
 
 The facts about the Matrix were read from its source, and the facts about the host from
 Schwung's source. The probe (`probe/`, results in [probe/RESULTS.md](probe/RESULTS.md)) then
@@ -30,42 +31,48 @@ the Move's **USB-A** port and open its **Performance** app. Then you load Viz in
 FX position. From then on the Matrix's 8x8 pads and its 32 underglow LEDs become a light
 show for the music:
 
-- **Move playing:** the pictures lock to Move's clock. Petals open across a bar, fireflies
-  fall into step, scenes change on phrase boundaries.
-- **Move stopped:** the pictures follow the sound coming out of the master. Bass swells,
-  hats glint, the mix's own hits make the beat.
-- Either way the show **evolves on its own.** Every scene drifts slowly, colours wander, and
-  in Journey mode Viz moves from one scene to the next, dissolving one world into another.
+- **Move playing:** the shapes step on Move's clock: a ring bursts on every beat, a snake
+  takes one pad per 16th, the colours swap on the bar.
+- **Move stopped:** the same scenes follow the sound coming out of the master. Kicks make
+  the beat, and the hits and bands drive the scenes that read them.
+- **The knobs perform.** Each Look knob has a change you can see at once: faster steps,
+  bigger shapes, longer trails, a mirror fold, a colour swap, a kick that flashes the grid.
 
 Viz leaves the audio untouched. It is an "effect" only in where it sits.
 
 ### The aesthetic brief
 
-The user, 2026-10-10:
+The first build led with organic scenes (auroras, ink, fireflies). On the device the user
+found them random-looking (2026-10-10):
 
-> *"I want beautiful, organic, abstract animations. Let's really use this to make a gorgeous
-> visualizer with a very wide range of different animations that can evolve over time."*
+> *"A lot of visual performances with grid controllers like these rely on more geometric
+> animations, regular shapes and clearer colour changes."*
 
-and, on the icon-style pictures of the first draft:
+They also asked for knobs with a more tangible effect, "so it feels more performative", and
+kept organic scenes as a side dish: "nice to have", but the main set must be "visually
+distinct, clear to the eye".
 
-> *"We can also keep the icon-style pictures. They're just other modes available."*
+So the main set follows what grid-controller light shows do (Launchpad light-show
+performers, Apollo Studio projects, lighting desks):
+- the grid is an **8x8 screen**: solid colours on black, every pad either lit or dark;
+- **hard-edged shapes** (rings, bars, sprites, sweeps) that **step on the beat**;
+- **mirroring** for symmetry, and **bursts** on hits;
+- from lighting desks: a speed control, a few **colour sets** of three colours each, and
+  strobe-like effects used sparingly.
 
-So the organic scenes lead: soft light moving through a medium, like ink, smoke, water,
-auroras, growth and swarms. A crisp **Graphic** family (equalizer bars, rings, radar and the
-rest) sits beside them as further modes.
-
-An 8x8 grid only looks organic if three things hold, and the engine is built around them:
-
-1. **Every pad is antialiased.** A pad is the average of a 4x4 patch of a finer picture, so
-   an edge falls across a pad as a partial glow rather than a hard step.
-2. **Motion is continuous.** Positions are real numbers and every musical input goes
-   through a soft spring, so nothing jumps a whole pad at a time.
-3. **Colour comes from designed gradients.** Each scene draws a *value* that is looked up
-   in a cosine-palette gradient. Colours are not raw hues.
+The scenes were drawn, judged and picked in a scene gallery on the Mac (*Scenes*), over six
+rounds, until the user had 100 they wanted. The six organic scenes stay, after the 100.
 
 ---
 
 ## Lineage
+
+**Grid light shows**
+- Launchpad light-show performers, who play a song's lights as pads, and mat1jaczyyy's
+  **Apollo Studio**, whose SysEx Viz speaks. Their grammar is the main set's: solid colour
+  on black, hard shapes, steps on the beat, mirrored and burst.
+- Lighting desks: a speed fader, colour palettes, chases and strobe. RATE, COLOR and REACT
+  come from there.
 
 **Light organs and visual music**
 - Alexander Scriabin, *Prometheus: The Poem of Fire* (1910). Its score includes a part for
@@ -220,7 +227,10 @@ palettes are the fallback.
 2. On the Matrix, open **Performance** (the red app). If nothing responds later, replug.
 3. Optional: turn on its **Menu Lock**, so a stray Fn press doesn't open the menu over the
    show.
-4. Optional: turn off Move's MIDI output to USB-A, so Move's notes don't paint the pads.
+4. Stop Move's notes painting the pads: Move echoes each track's MIDI out to USB-A, and the
+   Matrix paints pads from notes on channels 1–6 (`NoteHandler`). Set each track's MIDI
+   output channel to **7 or higher**; where the track plays a Schwung module, set the
+   slot's **Recv Ch** to match.
 5. To light up to Move's own instruments (not only Schwung modules), turn on Move→Schwung in
    Schwung's Global Settings.
 6. Load Viz into a Master FX position.
@@ -367,153 +377,172 @@ The mix is summed to mono (keeping stereo width as one extra number), then:
 
 ### How music touches a scene
 
-One shared grammar keeps the show legible across 36 scenes:
+The geometric scenes keep the music legible by keeping it simple:
 
-| Musical event      | What it does to the picture                        |
-|--------------------|----------------------------------------------------|
-| Low hit (kick)     | an **impulse**: dye injected, a stone dropped, a bloom |
-| Mid hit            | a **secondary ripple** or eddy                     |
-| High hit (hats)    | **glints**, twinkles, sparks                       |
-| 8 bands            | **pressure and density**, per column or per region |
-| Beat phase         | **breathing** of brightness and scale              |
-| Bar                | the **palette steps** forward                      |
-| Phrase / section   | where **transitions** happen                       |
-| Energy arc         | scene choice in Journey; palette warmth            |
-
-**Nothing jerks.** Every input reaches a scene through a critically-damped spring. REACT sets
-the spring's depth and FLOW its speed, so light swells and settles.
+| Musical input  | What the scenes do with it                                  |
+|----------------|-------------------------------------------------------------|
+| Beat           | **steps**: RATE turns beats into steps (1 bar to 1/16), and most scenes move one step at a time, with a smooth phase inside the step for sprites in flight |
+| Bar            | SHIFT Bar swaps the three colours                           |
+| Kick           | REACT (Glow, Grow, Flash, Flip); SHIFT Kick; some scenes count or burst on it |
+| Snare, hats    | a few scenes read them directly (Kit, Beats, Tally…)        |
+| 8 bands, bass  | the meter scenes (Bars, Bass, Speaker…)                     |
+| Hit log        | the last four bars of kicks, snares and hats, a 16th per slot, for Steps-style scenes |
 
 ---
 
 ## Scenes
 
-**36 scenes in seven families.** The six organic families (24 scenes) are the heart of Viz.
-The seventh, **Graphic**, is the crisp icon-style set.
+**100 geometric scenes, then six soft ones.** SCENE lists them in this order, 106 in all.
 
-Each scene has 3–4 **genes**: internal parameters that drift (see Evolution). The tables give
-each scene's look, its genes, and what the music does. The "beat" column assumes a clock or
-the own beat; "sound" is the bands and hits.
+### How they were chosen: the scene gallery
 
-### Sky
+`tools/gallery/gallery.html` is a single page that runs on the Mac. It plays a drum loop
+(WebAudio: eight bars with a fill in bar 3 and a breakdown in bars 6–7) and shows every
+scene as a live 8x8 tile with the real knobs. The user marked each scene Keep, Maybe or
+Drop, and replacements were drawn for every drop. It took six rounds, from about 20 scenes to
+the final 100 (97 kept, plus UFO, Stairs and Tally as Maybes).
 
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Aurora** | Curtains of layered noise hanging and folding across the grid | fold scale, curtain count, sway | curtains breathe | bands lift their own columns of curtain; hats shimmer the hems |
-| **Nebula** | Domain-warped fractal clouds turning slowly | warp depth, octave count, rotation | warp pulses | kick punches the warp outward; brightness opens the colour |
-| **Dawn** | A soft sun rising over a phrase and tinting the whole sky | horizon, glow width, haze | rise is phrase-locked | loudness lifts the glow; section change starts a new dawn |
-| **Stars** | A drifting depth field of soft points | depth speed, density, parallax | the field surges | hats twinkle individual stars; kick sends a ripple through the field |
+**The gallery is the reference.** `src/dsp/shapes.c` is a line-for-line port of its
+JavaScript, and a test runs both on the same loop and compares every pad of every frame
+(*Testing*). So a scene looks on the Matrix the way it looked when the user picked it. Change
+a scene in the gallery first, then port the change.
 
-### Water
+### The 100
 
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Tide** | A wave-equation pool (24x24) with soft reflections | damping, wave speed, depth tint | stones dropped on the beat | kick drops a big stone, mids small ones, at points chosen by the bands |
-| **Caustics** | The light under moving water: a sum of drifting wave fronts | wave count, scale, flow angle | brightness breathes | bands set the energy of the matching wave fronts |
-| **Sea** | The 8 bands as a rolling, foaming surface seen side-on: the **organic equalizer** | swell, foam, horizon | swell on the beat | each column's water level is its band; hits throw spray |
-| **Rain** | Drops spreading rings on a dark pond | drop rate, ring speed, wind | drops on 8ths | hats and mids make drops; kick makes a heavy one |
+"Uses" names the knobs that change a scene's shape beyond the ones every scene has (COLOR,
+TRAIL, FOLD, SHIFT and REACT work on all of them).
 
-### Fluid
+| # | Scene | The picture | Uses |
+|---|-------|-------------|------|
+| 1 | **Pulse** | The whole grid (or a centre square at smaller SIZE) flashes on every step and fades. | RATE SIZE |
+| 2 | **Rings** | A square ring bursts out from the centre on every step. | RATE SIZE |
+| 3 | **Diamond** | A diamond ripples out from the centre on every step. | RATE SIZE |
+| 4 | **Burst** | Each kick and snare sets off a ring from a random pad. The kick's rings come from near the centre. | SIZE |
+| 5 | **Sweep** | A bar sweeps back and forth, one pad per step. It turns sideways every other pass. | RATE SIZE |
+| 6 | **Cross** | A plus sign and an X take turns, one per step. | RATE SIZE |
+| 7 | **Snake** | A snake spirals from the edge to the centre and back, two pads per step. SIZE sets its length. | RATE SIZE |
+| 8 | **Radar** | A hand sweeps round the centre, one turn every four steps. SIZE widens it. | RATE SIZE |
+| 9 | **Stripes** | Diagonal stripes slide across, one pad per step, like a barber's pole. | RATE SIZE |
+| 10 | **Tunnel** | Nested squares zoom outward, one ring per step. SIZE spaces the rings. | RATE SIZE |
+| 11 | **Quads** | The four quarters light in turn, clockwise, one per step. Small SIZE lights just the middle of each quarter. | RATE SIZE |
+| 12 | **Shapes** | A different shape on every step: square, diamond, X, plus, ring, block. | RATE SIZE |
+| 13 | **Steps** | The 16 steps of the bar as 16 blocks. The current step is bright; kicks leave a mark. | (follows the bar) |
+| 14 | **Rise** | Rows fill from the bottom, SIZE rows per step, then the full grid flashes and it starts again. | RATE SIZE |
+| 15 | **Bounce** | A ball bounces across the grid and lands on every step. | RATE SIZE |
+| 16 | **Wave** | A sine wave rolls across. The bass makes it taller. | RATE SIZE |
+| 17 | **Rain** | Drops fall down the columns. More drops on every hi-hat; SIZE sets how many. | RATE SIZE |
+| 18 | **Bars** | The classic equalizer: eight frequency bands as columns. SIZE makes fewer, wider bars. | SIZE |
+| 19 | **Spiral** | Two spiral arms turn round the centre, a quarter turn per step. SIZE thickens the arms. | RATE SIZE |
+| 20 | **Pinwheel** | Coloured blades click round one notch per step. SIZE sets how many blades. | RATE SIZE |
+| 21 | **Kit** | Each drum has its own shape: the kick a centre square, the snare the four corners, the hi-hat the outer ring. | SIZE |
+| 22 | **Icons** | A picture on every step: heart, smiley, invader, note, star. | RATE |
+| 23 | **Count** | Counts the steps out loud: big numbers 1 to 8. | RATE |
+| 24 | **Arrow** | A big arrow flies across the grid. It points a new way (up, right, down, left) on every step. | RATE |
+| 25 | **Corners** | Light runs in from all four corners and meets in the middle on every step. | RATE SIZE |
+| 26 | **Stack** | Blocks drop and stack up like Tetris, one per step. Full rows clear; when it reaches the top, the grid flashes and empties. | RATE SIZE |
+| 27 | **Rocket** | A rocket shoots up and bursts into a ring, once per step. SIZE makes the burst bigger. | RATE SIZE |
+| 28 | **Halves** | The grid is cut into SIZE + 1 bands that light one after another. The cut turns sideways each round. | RATE SIZE |
+| 29 | **Pong** | A game of Pong: the ball moves four pads per step and the paddles chase it. SIZE sets the paddle length. | RATE SIZE |
+| 30 | **Trace** | A heart monitor: a line scrolls across and spikes on every kick. | RATE |
+| 31 | **Invaders** | Space invaders march side to side and creep down a row every four steps. Your cannon at the bottom fires on every kick. | RATE |
+| 32 | **Breakout** | The ball knocks out bricks, two moves per step. When the wall is gone it builds again. SIZE sets the paddle width. | RATE SIZE |
+| 33 | **Text** | The word VIZ scrolls across, two columns per step. (The word could be anything you like.) | RATE |
+| 34 | **Spin** | A square outline turns smoothly, an eighth of a turn per step, and changes colour every quarter turn. SIZE sets how big it is. | RATE SIZE |
+| 35 | **Heart** | A heart that beats: big at the start of every step, then small. | RATE |
+| 36 | **Sand** | An hourglass: sand runs from the top half to the bottom over 16 steps, then the glass turns over. | RATE |
+| 37 | **Chomp** | A chomping mouth crosses the grid eating a row of dots. Its mouth snaps shut on every step. | RATE |
+| 38 | **Doors** | Two doors slam shut at the start of every step, then slide open. They swap between side-to-side and up-and-down. | RATE |
+| 39 | **Flap** | A bird flaps up on every kick and sinks in between, while pipes scroll past two columns per step. | RATE |
+| 40 | **Jump** | A runner jumps on every kick while cactuses scroll towards it along the ground. | RATE |
+| 41 | **Noughts** | Noughts and crosses: one move per step, the two players in two colours, then a new game. | RATE |
+| 42 | **Four** | Connect Four: a disc drops into a column on every step, the colours taking turns. When the board is full it clears. | RATE |
+| 43 | **Road** | Driving down a winding road: the edges sweep past four rows per step and the car stays in its lane. | RATE |
+| 44 | **Maze** | A dot runs through a maze, two pads per step, and turns back at the end. | RATE |
+| 45 | **Dice** | A die rolls on every step: it tumbles for a moment, then lands on a number. | RATE |
+| 46 | **Catch** | A dot falls on every step and the basket slides across to catch it. | RATE |
+| 47 | **Lander** | A lander drops toward the pad a row per step, firing its engine on the kick, and lands every eight steps. | RATE |
+| 48 | **Tanks** | Two tanks trade shots: the left one fires on the kick, the right one on the snare. | - |
+| 49 | **Face** | A face that changes mood on every step: happy, sad, winking, surprised. | RATE |
+| 50 | **Eye** | An eye looks left, ahead and right, one glance per step, and blinks on every snare. | RATE |
+| 51 | **Sun** | A sun whose rays switch between straight and diagonal on every step. | RATE |
+| 52 | **Moon** | The moon goes from new to full and back over 16 steps. | RATE |
+| 53 | **Flower** | A flower opens its petals on every step, four petals then eight. | RATE |
+| 54 | **Tick** | A tick and a cross take turns, each drawn stroke by stroke during its step. | RATE |
+| 55 | **Speaker** | A loudspeaker sends out sound waves on every kick. | - |
+| 56 | **Saturn** | A planet with a ring that tilts round a notch per step. | RATE |
+| 57 | **Clock** | A clock: the long hand moves an eighth of a turn per step, the short hand once per turn of the long one. | RATE |
+| 58 | **Charge** | A battery charges one bar per step, flashes when full, and starts again. | RATE |
+| 59 | **UFO** | A flying saucer drifts side to side, a pad per step, and shines its beam down on every kick. | RATE |
+| 60 | **Wipe** | A new colour wipes over the old one on every step, coming from a different side each time. | RATE |
+| 61 | **Curtain** | A new colour drops down column by column, left to right, on every step. | RATE |
+| 62 | **Iris** | A circle of new colour opens from the centre on every step. | RATE |
+| 63 | **Pie** | A new colour sweeps round like a clock hand, filling the grid once per step. | RATE |
+| 64 | **Diag** | A new colour wipes in diagonally from a corner, a different corner on every step. | RATE |
+| 65 | **Zoom** | A square closes in from the edge to the centre on every step: the reverse of Rings. | RATE SIZE |
+| 66 | **Aim** | Crosshairs: a line moving up and down and another moving side to side, at different speeds. Where they cross is brightest. | RATE |
+| 67 | **Propeller** | Thin blades click round a sixteenth of a turn per step. SIZE adds blades. | RATE SIZE |
+| 68 | **Eight** | A dot with a short tail traces a figure of eight, once every four steps. | RATE |
+| 69 | **Helix** | A DNA double helix: two waves winding round each other, with rungs between them. | RATE |
+| 70 | **Metronome** | A metronome arm swinging from side to side, reaching the end on every step. | RATE |
+| 71 | **Cradle** | Newton's cradle: the end ball swings out and clacks back on every step, left then right. | RATE |
+| 72 | **Piston** | Four pistons pumping up and down one after another, like an engine. | RATE |
+| 73 | **Ping** | A block ricochets from corner to corner, reaching a corner on every step. | RATE SIZE |
+| 74 | **Juggle** | Three balls juggled hand to hand, one landing on every step. | RATE |
+| 75 | **Frame** | Square frames step in from the edge one per step, then back out again. | RATE |
+| 76 | **Stairs** | A staircase builds one stair per step, flashes, and starts again. | RATE |
+| 77 | **Swap** | Two squares trade corners on every step, sliding past each other. | RATE |
+| 78 | **Bubbles** | A bubble rises on every step and pops at the top. SIZE makes the bubbles bigger. | RATE SIZE |
+| 79 | **Train** | A train runs round a square track, two pads per step. | RATE |
+| 80 | **Boxes** | Two square outlines slide apart and back together on every step, overlapping in the middle. | RATE |
+| 81 | **Bass** | A floor that rises and falls with the bass, its top edge brightest. | - |
+| 82 | **Pads** | A 4x4 drum-pad grid: the kick, snare, bass and hi-hats each light their own pads as they play. | - |
+| 83 | **Tally** | Every drum hit adds a dot in its colour, filling the grid over four bars, then it starts again. | - |
+| 84 | **Beats** | Four columns for the four beats of the bar. The current beat's column is full and drains away as the beat passes. | - |
+| 85 | **Lift** | A lift climbs a floor per step to the top, then comes back down. | RATE |
+| 86 | **Hoop** | Basketball: a shot on every kick arcs into the hoop, and the net flashes as it drops through. | - |
+| 87 | **Bowl** | Bowling: the ball rolls up the lane on every step and scatters the pins. | RATE |
+| 88 | **Darts** | Three darts fly into the board, one per step, then the board clears. | RATE |
+| 89 | **Seesaw** | A seesaw tips the other way on every step and the ball rolls down to the low end. | RATE |
+| 90 | **Yoyo** | A yo-yo drops down its string and climbs back up on every step. | RATE |
+| 91 | **Coil** | A new colour coils in from the edge to the centre along a spiral, once per step. | RATE |
+| 92 | **Volley** | A ball lobbed back and forth over a net, landing on each side on every step. | RATE |
+| 93 | **Swing** | A playground swing reaching the top of its arc on every step. | RATE |
+| 94 | **Goal** | Penalties: a shot at goal on every kick while the keeper shuffles across, a pad per step. A goal lights the net. | RATE |
+| 95 | **Skate** | A skater rides a halfpipe, reaching the lip on one side, then the other, on every step. | RATE |
+| 96 | **Mow** | A new colour is mown in row by row, back and forth like a lawnmower, once per step. | RATE |
+| 97 | **Pour** | A new colour pours in and fills the grid from the bottom up once per step, its surface sloshing. | RATE |
+| 98 | **Ski** | A skier slaloms down through gates that scroll past, two rows per step. | RATE |
+| 99 | **Pool** | Pool: on every step the white ball strikes the coloured ball into a corner pocket. | RATE |
+| 100 | **Weave** | A new colour threads in along a maze-like path that visits every pad, once per step. | RATE |
 
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Ink** | Stable fluids (16x16 solver, dye at 32x32): coloured ink curling through water | viscosity, vorticity, dye fade | a slow stir each bar | kick injects a jet of dye, its colour from the palette's current phase |
-| **Smoke** | Curl-noise wisps rising and unravelling | curl scale, rise speed, turbulence | rise surges | bands feed smoke sources along the bottom row |
-| **Lava** | Merging metaballs drifting like a lava lamp | ball count, threshold, buoyancy | the balls swell | bass swells them; mids split one off |
+### The six soft scenes
 
-### Growth
+After the 100 come six scenes from the organic first build: **Aurora**, **Nebula**,
+**Tide**, **Fireflies**, **Reeds** and **Lava**. They render a 32x32 field averaged down to
+the pads, as the first design described. They don't step, so the Look knobs map onto their own
+controls:
 
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Coral** | Gray-Scott reaction-diffusion (32x32): spots, stripes and coral fronts | feed rate, kill rate, diffusion ratio | growth pulse | hits seed new growth; the energy arc walks feed and kill through the parameter map |
-| **Moss** | Physarum slime: agents leaving and following trails into veins | agent count, sensor angle, decay | trails flare | bands bias agents toward their regions; kick scatters them |
-| **Lichen** | Lenia soft life: smooth creatures that glide and divide | kernel radius, growth centre, growth width | heartbeat | hits drop new life; quiet lets it settle into stable forms |
-| **Bloom** | Phyllotaxis petals unfurling from the centre | petal count, angle offset, open speed | opens across each bar and closes on the downbeat | loudness opens it wider; hats flick the petal tips |
-| **Reeds** | 8 soft grass stalks swaying: the **second organic equalizer** | stiffness, gust, seed heads | wind gusts on the beat | each stalk's height is its band |
+| Knob  | Soft-scene meaning |
+|-------|--------------------|
+| COLOR | the nearest gradient: Ice→Ink, Fire→Ember, Acid→Neon, Sunset→Dusk, Mint→Moss, Royal and Candy→Orchid, Mono→Bone, Rainbow→Prism |
+| RATE  | flow speed (1 bar slowest, 1/16 fastest) |
+| SIZE  | detail |
+| TRAIL | bloom: glow and persistence |
+| FOLD  | the same mirror fold, on the pads |
+| SHIFT | unused |
+| REACT | how hard the music pushes: Off 0, then 0.45, 0.6, 0.8 and 1 |
 
-### Swarm
-
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Fireflies** | A few dozen soft lights, each a Kuramoto oscillator flashing on its own cycle | coupling, spread of natural rates, wander | **coupling to Move's clock rises while playing, so the swarm slowly falls into step with the music, and drifts apart again when stopped** | hits briefly brighten neighbours, tightening sync |
-| **Flock** | Boids: soft points wheeling and splitting | cohesion, alignment, separation | the flock turns on the beat | kick scatters it; bands pull it toward their regions |
-| **Pollen** | Particles carried on a slowly turning flow field | field scale, particle count, trail | gusts | bands set local wind; hats release new grains |
-| **Comets** | Soft bodies orbiting unseen masses, with tails | mass count, gravity, tail length | perihelion on the downbeat | kicks fling them outward |
-
-**Fireflies is the signature scene.** It shows the sync idea without one hard edge: no clock,
-loose and organic; clock running, you watch order arrive.
-
-### Pattern
-
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Moiré** | Interference rings from two wandering point sources | wavelength, source distance, beat rate | the sources trade phase | bands detune the wavelengths |
-| **Lissajous** | A glowing pendulum trace whose ratio slowly changes | ratio, phase, trail | one cycle per bar | the harmonic balance (low vs high) picks the ratio |
-| **Julia** | A slice of a Julia set, its *c* wandering along the Mandelbrot boundary | c path speed, zoom, iteration colour | zoom breathes | loudness pushes *c* toward chaos; quiet lets it settle |
-| **Cells** | Soap-bubble Voronoi cells drifting and pressing on each other | cell count, wall softness, drift | the cells pulse | each cell is tied to a band and swells with it |
-
-**Kaleido** is not a scene. It is the FOLD gene (a four-way or eight-way mirror) that any
-organic scene can grow into during drift. A held scene keeps whatever fold it has.
-
-### Graphic
-
-Pixel-sharp scenes drawn at pad resolution, with no supersampling. They still use the
-drifting palettes, BLOOM trails and gene drift, so even a classic meter glows.
-
-| Scene  | The picture | Genes | Beat | Sound |
-|--------|-------------|-------|------|-------|
-| **Bars** | The classic 8-band equalizer | peak hold, fall speed, gradient direction | peaks flash | column height is its band |
-| **Mirror** | Bars growing from the centre row | fall speed, split, tilt | centre line pulses | bands, mirrored up and down |
-| **Pulse** | The whole grid breathes | curve, edge falloff, hue swing | breath on every beat | loudness sets the floor; kick sets the peak |
-| **Rings** | Squares spreading out from the centre | ring width, speed, origin wander | a ring on every beat | kick makes a bright ring, hats thin ones |
-| **Scanner** | A column sweeping across | width, direction, echo | one column per 16th | bands light the column's height |
-| **Radar** | A rotating arm with a fading wake | arm width, wake, blips | one turn per bar | hits leave blips |
-| **Spiral** | A snake tracing a spiral | length, direction, start corner | one lap per bar | loudness lengthens it |
-| **Checker** | A checkerboard flipping | cell size (1, 2 or 4 pads), flip pattern | flips on beats | brightness from loudness |
-| **Tunnel** | Squares zooming toward you | speed, twist, depth fade | a new square per beat | bass speeds the zoom |
-| **Life** | Conway's Game of Life | birth colour, step rate, reseed threshold | one generation per 8th | hits seed gliders; reseeds itself when it dies |
-| **Steps** | The 16-step position as 4x4 blocks | trail, fill, order | the step light | hits flash the current block |
-| **Sparkle** | Random glints on a dark field | density, decay, colour spread | glints cluster on beats | hats make glints, kick a burst |
+Their warp and drift sit at fixed middle values.
 
 ---
 
-## Evolution: the show never sits still
+## Later: Journey and drift
 
-Three layers work at three timescales.
-
-**1. Genes (seconds to minutes).** Each gene wanders on an **Ornstein-Uhlenbeck** walk: a
-random walk pulled gently back to its home value. It drifts, but it never wanders off into
-ugliness. The walk's speed is set by DRIFT; its home is set by the Look knobs. The same scene
-at minute 1 and minute 6 is clearly related and clearly different. DRIFT at 0 freezes the
-genes, for a performer who wants control.
-
-**2. Palette drift (bars to minutes).** Every COLOR family is a cosine palette, colour(t) = a
-+ b·cos(2π(c·t + d)), as in Quilez. Viz animates:
-
-- the phase *d*: it creeps continuously and steps a little on each bar;
-- the warmth: the energy arc rotates *d* toward warm when dense and toward cool when sparse.
-
-The family never changes by itself; only its mood moves.
-
-**3. Journey (phrases to a whole set).** SCENE's first three values are **Journey**,
-**Journey: Organic** and **Journey: Graphic**. *Journey* is the default.
-
-- **When to change:**
-  - Move playing: at the end of a phrase (CYCLE bars), counted from the transport start.
-  - Stopped: on a section change, or after about two minutes.
-- **What comes next.** Each scene carries a calm-to-busy rating. Viz picks the next scene so
-  that the rating matches the energy arc, with a little randomness and no immediate repeats:
-  - calm music draws **Sky** and **Water**;
-  - busier music draws **Growth**, **Swarm** and **Fluid**;
-  - the densest, most rhythmic moments draw **Graphic** (plain *Journey* only).
-  So a breakdown drifts to Aurora, and the drop arrives as Ink or Rings.
-- **How it changes: a dissolve, never a cut.** For the change, Viz renders both scenes and
-  mixes them through a moving noise-threshold mask over 1–4 bars, so one world seeps into
-  the other along organic edges. Graphic-to-Graphic changes may cut on the downbeat; that
-  suits them.
-- **Picking a named scene holds it.** The genes and palette still drift.
-- **Dreaming.** When Move is stopped and the mix is silent for a few seconds, Viz settles
-  into a dim, slowly breathing version of the current scene. It **never goes black**. Sound
-  wakes it within one frame.
+The organic plan had Viz wander by itself: genes on slow random walks, palette drift, and a
+**Journey** mode that dissolved from scene to scene on phrase boundaries. None of that is in
+the geometric set. The user asked for control that feels played, and a show that changes by
+itself works against that. Revisit after the device pass, if a hands-off mode is wanted; CYCLE
+on the Settings page is kept for it.
 
 ---
 
@@ -546,14 +575,31 @@ device's deadline (`plugin_api_v1.h:29-104`). So:
 
 ### Rendering
 
-- **Organic scenes** render a **32x32 float field** (one value, or a value plus a colour
-  offset, per sample). Simulations run on 16x16–32x32 grids as each scene needs. Each pad
-  is the box average of its 4x4 samples, and BLOOM adds a small blur and frame-to-frame
-  persistence.
-- **Graphic scenes** render at 8x8 directly.
-- The **underglow** for each side is the average of that side's outer two rows of the
-  field. With EDGE set to Breathe, the beat drives it.
-- **Values to colour:** value → COLOR gradient → linear RGB → LIGHT and gamma.
+**The 100 geometric scenes** (`shapes.c`) draw at pad resolution. Each frame:
+
+1. **Draw.** The scene calls `set(x, y, colour, amount)` for the pads it lights. Positions
+   round to the nearest pad (JavaScript's `Math.round`), and two shapes on one pad keep the
+   brighter. `colour` is 0, 1 or 2: one of COLOR's three colours.
+2. **Colour.** The colour is the set's colour `(ci + shift) % 3`, where SHIFT advances
+   `shift` on each bar, beat or kick. *Rainbow* instead takes a hue from the colour, the
+   shift and the pad's position.
+3. **FOLD** copies the top-left of the picture onto the rest: across (Sides), down (Top),
+   both (Four), or both plus the diagonal (Eight).
+4. **REACT** works on every scene:
+   - Glow: brightness × (0.55 + 0.45·kick) × 1.25;
+   - Grow: SIZE + 1 while the kick is above half, and brighter;
+   - Flash: a wash of the third colour, 0.45 × kick, over the whole grid;
+   - Flip: on a strong kick, lit pads go dark and dark pads light in the second colour.
+5. **TRAIL.** Each pad shows the brighter of this frame and the last one faded by
+   exp(−dt/τ), with τ = 0, 0.06, 0.15, 0.35 or 0.9 s.
+
+**The six soft scenes** (`scenes.c`) render a **32x32 float field**, each pad the box
+average of its 4x4 samples, with bloom adding blur and persistence, then the FOLD.
+
+Then, for both kinds: TURN, the underglow (Glow: each side carries 0.8 × the pad beside it
+for a geometric scene, a blend of the outer two rows for a soft one; Breathe: the beat pulses
+the whole ring), LIGHT, and the power guard. Changing between a geometric and a soft scene
+starts the new one fresh.
 
 ### Colour: full RGB by SysEx
 
@@ -658,19 +704,18 @@ held-knob header shows.
 
 ### Page 1: Look
 
-These shape the picture. Where a scene has genes, these knobs set the genes' **home**; DRIFT
-decides how far the genes wander from it.
+These shape the picture, and each one shows its effect straight away.
 
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
-| 1 | `scene` | SCENE | **Scene.** Enum: *Journey*, *Journey: Organic*, *Journey: Graphic*, then the 36 scenes grouped by family. Turning it cross-dissolves to the new scene over one beat (or 0.5 s when stopped). Default *Journey*. |
-| 2 | `color` | COLOR | **Colour family.** Enum: Dusk, Lagoon, Ember, Moss, Orchid, Aurora, Ink, Prism, Bone, Neon. Each is a cosine palette whose mood drifts (see Evolution). Default Dusk. |
-| 3 | `flow` | FLOW | **Flow speed.** How fast things move. With the clock running it is tempo-relative, from ¼× to 4× in musical steps around 1×. When stopped it is free, at a matching rate. Default centre. |
-| 4 | `grow` | GROW | **Detail.** Complexity: noise octaves, particle and agent counts, cell count, zoom. Low is a few large soft shapes; high is fine, busy texture. |
-| 5 | `bloom` | BLOOM | **Glow and trails.** Softness (blur) and how long light lingers (persistence). Low is crisp and immediate; high is dreamy smears. |
-| 6 | `react` | REACT | **Reaction.** How strongly the music pushes the picture: the spring depth for hits, bands and breathing. 0 is a pure ambient piece; high slams. |
-| 7 | `warp` | WARP | **Warp.** Turbulence and distortion: domain-warp depth, curl strength, flock jitter, wave nonlinearity. On Graphic scenes it bends lines into curves. |
-| 8 | `drift` | DRIFT | **Evolution speed.** How fast the genes wander and the palette mood moves. 0 holds the scene exactly as set. Journey timing is CYCLE's job, not this knob's. |
+| 1 | `scene` | SCENE | **Scene.** Enum: the 100 geometric scenes in gallery order, then the six soft scenes. Default Pulse. |
+| 2 | `color` | COLOR | **Colour set.** Enum: Ice, Fire, Acid, Sunset, Mint, Royal, Candy, Mono, Rainbow. Three colours each; Rainbow spreads hues across the grid. Default Acid. |
+| 3 | `rate` | RATE | **Steps, on the beat.** Enum: 1 bar, 1/2, 1/4, 1/8, 1/16: one step per bar up to one per 16th. Default 1/4. |
+| 4 | `size` | SIZE | **Shape size (pads).** Enum: 1, 2, 3, 4. How big or thick the shapes are. Default 2. |
+| 5 | `trail` | TRAIL | **Trail length.** Enum: Off, Short, Medium, Long, Smear. How long lights linger after they move on; Off is hard-edged. Default Short. |
+| 6 | `fold` | FOLD | **Mirror fold.** Enum: Off, Sides, Top, Four, Eight. Folds the picture left/right, top/bottom, four ways or eight ways (a kaleidoscope). Default Off. |
+| 7 | `shift` | SHIFT | **Colour swap.** Enum: Hold, Bar, Beat, Kick. When the three colours trade places. Default Bar. |
+| 8 | `react` | REACT | **Kick reaction.** Enum: Off, Glow, Grow, Flash, Flip. What a kick does to any scene (see *Rendering*). Default Glow. |
 
 ### Page 2: Settings
 
@@ -680,7 +725,7 @@ decides how far the genes wander from it.
 | 2 | `power` | POWER | **Power source.** Enum: Port / Hub. *Port* (default) keeps every frame inside what the Move's USB-A port can supply (measured; see *The power guard*). *Hub* removes the limit, for a Matrix on a powered USB hub. |
 | 3 | `light` | LIGHT | **Brightness.** Overall level, 0–100%, applied after the power guard, so it can only make things dimmer. Default 80%. |
 | 4 | `grid` | GRID | **Grid device.** Enum: Matrix / LP Mini MK3 / LP X / LP Pro MK3 / LP MK2 / LP Pro (see *Other grids*). Default Matrix. Launchpads are untested. |
-| 5 | `cycle` | CYCLE | **Journey phrase.** Enum: 4 / 8 / 16 / 32 / 64 bars between Journey scene changes while Move plays. Default 16. |
+| 5 | `cycle` | CYCLE | **Journey phrase.** Enum: 4 / 8 / 16 / 32 / 64 bars. Kept for a later Journey (see *Later: Journey and drift*); it does nothing yet. Default 16. |
 | 6 | `turn` | TURN | **Rotation.** Enum: 0° / 90° / 180° / 270°. Default 0°. |
 | 7 | `edge` | EDGE | **Underglow.** Enum: Off / Glow (each side carries the picture's colour beside it) / Breathe (the beat pulses the whole ring). Default Glow. |
 | 8 | `nudge` | NUDGE | **Light timing.** −150 to +100 ms. It shifts the lights earlier or later to match the sound you hear. **Default −40 ms**: driven straight off the clock, the lights ran about 40 ms ahead of the speakers (probe Beat test). |
@@ -689,9 +734,24 @@ decides how far the genes wander from it.
 
 ## Rejected alternatives
 
-- **Icon scenes as the main identity.** The first draft's set (bars, checker, radar,
-  scanner…) was judged not beautiful enough to lead. It remains as the Graphic family, with
-  the organic families leading.
+- **Organic scenes as the main set.** The first build's scenes (auroras, ink, fireflies…)
+  looked random on the grid, and their knobs had no effect you could point to. Six remain as
+  soft scenes after the 100.
+- **The organic knobs: FLOW, GROW, BLOOM, WARP and DRIFT.** Each moved a picture that was
+  already moving, so turning them was hard to see. RATE, SIZE, TRAIL, FOLD and SHIFT each
+  make one visible change.
+- **MIRROR as the fold knob's label.** Six letters; labels stop at five. FOLD says the
+  same.
+- **Scenes the user dropped in the gallery** (2026-10-10): Chevron, Checker, Life, Blocks,
+  Sparkle, Split, Zigzag, Fill, Laser, Star, Bricks, Tiles, Marquee, Orbit, Frog, Rocks,
+  Bolt, Signal, Fish, Triangle, Grid, Domino, Meter, Level, Ghost, Loader, Cube, Peaks,
+  Simon, Cat, Notes, Blinds, Open, Golf, Pogo and Fountain.
+- **Filtering Move's notes inside Viz.** Move echoes a track's MIDI out to USB-A, and the
+  Matrix paints pads from notes on channels 1–6, so drums lit pads under the show. A Master
+  FX can't touch that stream; moving the track to channel 7 or higher fixes it with no code
+  (*Setting up the Matrix*).
+- **Organic scenes leading, with icons as a side family** (the first design). The user's
+  device verdict reversed it: geometric scenes lead.
 - **A JavaScript canvas or custom on-screen UI.** Fleet rule: knobs and the jog wheel only.
   The Matrix is the display.
 - **Built-in palettes as the main path.** The first draft assumed SysEx couldn't reach a
@@ -709,7 +769,7 @@ decides how far the genes wander from it.
 - **Rendering on the audio thread.** Fluids, reaction-diffusion and supersampling cost far
   more than the SPI callback can spare.
 - **A gain knob.** Replaced by the automatic level.
-- **Hard cuts between scenes.** Replaced by the dissolve (Graphic-to-Graphic excepted).
+- **Hard cuts in a Journey.** A later Journey would dissolve. Turning SCENE by hand cuts on the next frame, which suits shapes that step.
 - **Tempo detection from audio** in 0.x. When stopped, the own beat from kick hits is
   enough. Revisit only if it proves unconvincing.
 - **Saving the custom palette to flash** (`41 7D`). It wears the flash and overwrites the
@@ -729,9 +789,15 @@ decides how far the genes wander from it.
     locks, or touches files (`plugin_api_v1.h:29-104`);
   - all buffers (fields, simulation grids, LUT, rings) are allocated in `create_instance`;
   - the render thread is joined in `destroy_instance`.
-- **Scene state:** one union of fixed-size scene structs per running scene, two in total
-  (current plus incoming, for the dissolve). A new scene is initialised by the render
-  thread, never by `set_param`.
+- **Scene state:** a geometric scene keeps its state in a fixed 4 KB block inside
+  `viz_shapes_t`, with fixed-capacity lists (64 entries) where the gallery grows arrays.
+  The soft scenes keep one union of fixed-size structs per slot. A new scene is initialised
+  by the render thread, never by `set_param`.
+- **Parity with the gallery.** `shapes.c` reproduces the JavaScript's arithmetic exactly:
+  doubles throughout, `float` where the gallery stores into a `Float32Array`, JavaScript's
+  rounding (`floor(x + 0.5)`) and `ToUint32`, and its xorshift random numbers and hash.
+  Everything builds with **`-ffp-contract=off`**: a fused multiply-add rounds once where
+  JavaScript rounds twice, and that alone broke Pool and Bowl.
 - **Determinism:** one seeded PRNG per instance (xorshift), so tests and the preview tool
   can replay a run exactly.
 - **Pad map:** a `const uint8_t` table from (x, y) to note, built from the formula in *Which
@@ -754,11 +820,12 @@ decides how far the genes wander from it.
   - setting up the Matrix (Performance app, Menu Lock; replug if it stays dark);
   - POWER: keep *Port* unless the Matrix is on a powered hub;
   - touching the Matrix plays the Move's selected track;
-  - turn off Move's MIDI output to USB-A for a clean picture;
+  - drums lighting pads: set the track's MIDI out to channel 7 or higher, and a Schwung
+    slot's Recv Ch to match;
   - turn on Move→Schwung so Viz hears Move's own instruments, not only Schwung modules;
   - LIGHT 0 before removing Viz, or the last picture stays;
   - Launchpads: pick GRID; untested;
-  - what each knob does.
+  - what each knob does, and that SCENE holds 100 shapes and then 6 soft scenes.
 
 ---
 
@@ -802,8 +869,15 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
    - Features: clock, 8 bands, three hits, automatic level, own beat.
    - All four MODEs and both pages.
    - The device layer (GRID): the Matrix, plus five Launchpads, untested.
-   - Organic scenes: Aurora, Nebula, Tide, Fireflies, Reeds, Lava.
-   - Graphic scenes: Bars, Pulse, Scanner.
+   - ~~Organic scenes: Aurora, Nebula, Tide, Fireflies, Reeds, Lava.~~ Built, then judged
+     on the device and moved behind the main set.
+   - **The reversal (2026-10-10):** the scene gallery, six pick rounds, and the 100
+     geometric scenes ported to C with exact parity. The new Look page: COLOR, RATE, SIZE,
+     TRAIL, FOLD, SHIFT, REACT.
+   - Next: the device pass with the 100 scenes.
+Versions 0.2.0–0.4.0 below are the organic plan. After the device pass they will be
+redrawn around the geometric set.
+
 2. **0.2.0: Journey.**
    - Organic: Ink, Coral, Pollen, Moiré, Caustics, Bloom.
    - Graphic: Rings, Mirror, Steps.
@@ -838,22 +912,33 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
 - Every packet is cable 2. Fallback notes are ch 1–2, with a note in 36–99, 100–123 or
   28–35.
 - Bypass and `destroy_instance` leave all 96 lights off.
+- The fill-all message is used only when it changes 24 or more lights, doesn't blank more
+  correctly-lit lights than it fixes, and makes no light brighter than it should be. (Without
+  those rules a mostly-dark picture kept refilling the grid black and never drew its lit
+  pads, and a bright flash pushed the underglow past the power budget for a frame.)
 - TURN rotates a known test frame correctly.
 
 **Listening**
 - A sine sweep raises the bands in order.
 - A kick loop fires low hits on the kicks and no high hits.
-- Silence reaches dreaming and never black.
 - With the clock stopped, a 120 BPM kick loop gives an own beat that phase-locks within 4
   beats.
 
 **Scenes**
-- Every scene runs for 10 simulated minutes under music and under silence. Every field value
-  stays finite (no NaN or inf), and no scene is all-black for more than 2 s under music.
+- **Parity** (`tests/parity_dump.mjs`, `tests/test_parity.c`). Node runs the gallery's own
+  script and writes every pad of every frame: 100 scenes, 540 frames (18 s) each, under four
+  knob settings. The C runs the same drum loop, knobs and clock, and every value must match
+  to within one level. Today: 41,472,000 values, none off by even one. The test also checks
+  that the scene names and order are the gallery's.
+- **Each Look knob is tangible.** Sweep, 8 s, each knob moved alone from its default: more
+  than a quarter of the frames must differ.
+- Every scene runs for 10 simulated minutes (music, then silence), at default knobs and at
+  every knob maxed. Soft-scene fields stay finite (no NaN or inf); no scene is all-black for
+  more than 2 s in the first 5 minutes, while the music plays; every frame renders in under
+  4 ms.
 - Frames are bit-identical from a fixed seed.
-- Genes stay within their bounds over 1 simulated hour at DRIFT max.
-- A Journey dissolve always reaches the next scene, and never picks the same scene twice in
-  a row.
+- Later, with Journey: genes stay within their bounds over 1 simulated hour, and a dissolve
+  always reaches the next scene.
 - Render time per frame stays under budget for each scene (host-side timing as a
   regression guard; the device number comes from the probe).
 

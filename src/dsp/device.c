@@ -147,7 +147,23 @@ static int build_frame(viz_sender_t *s) {
                 if (viz_grid_index(s->grid, b) && same3(s->want[a], s->want[b])) c++;
             if (c > best_count) { best_count = c; best = a; }
         }
-        if (best >= 0 && best_count * 10 >= present * 6) {
+        /* Only when the fill itself changes many lights: if the common colour
+         * is already showing, filling again would only wipe the rest, forever. */
+        int gain = 0, keep = 0, over = 0;
+        if (best >= 0) {
+            const uint8_t *b = s->want[best];
+            for (int i = 0; i < n; i++) gain += same3(s->want[ids[i]], b);
+            for (int id = 0; id < NLIGHT; id++) {
+                if (!viz_grid_index(s->grid, id) || same3(s->want[id], b)) continue;
+                const uint8_t *w = s->want[id];
+                /* lights already right in another colour, which the fill would blank */
+                if (s->known[id] && same3(w, s->shown[id])) keep++;
+                /* a light the fill would make brighter than it should be: the
+                 * power guard counted it at its own colour */
+                if (b[0] + b[1] + b[2] > w[0] + w[1] + w[2]) over = 1;
+            }
+        }
+        if (best >= 0 && best_count * 10 >= present * 6 && gain >= 24 && keep * 2 <= gain && !over) {
             begin(s, g);
             s->msg[s->msg_len++] = g->cmd;
             s->msg[s->msg_len++] = 0x00;

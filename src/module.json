@@ -6,7 +6,7 @@
   "dsp": "viz.so",
   "api_version": 2,
   "component_type": "audio_fx",
-  "description": "Living light on a grid for whatever Move is playing.",
+  "description": "Light shows on a grid for whatever Move is playing.",
   "capabilities": {
     "audio_in": true,
     "audio_out": true,

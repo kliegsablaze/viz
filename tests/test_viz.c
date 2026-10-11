@@ -185,13 +185,15 @@ static void test_midi(void) {
     reset_display(GRID_MATRIX);
     long t0 = g_total_pkts;
     api->set_param(v, "light", "1");
+    api->set_param(v, "color", "Mono");            /* white over the whole grid: the guard has work */
+    api->set_param(v, "size", "4");
     double worst = 0;
-    for (int k = 0; k < 40; k++) {                 /* 20 s, looking every half second */
-        run(v, &s, 0.5, 1, 1);
+    for (int k = 0; k < 54; k++) {                 /* 20 s, looking off the beat */
+        run(v, &s, 0.37, 1, 1);
         double p = display_power(GRID_MATRIX);
         if (p > worst) worst = p;
     }
-    double secs = 20.0;
+    double secs = 54 * 0.37;
     CHECK(g_max_block_pkts <= SEND_PER_BLOCK_MAX, "a block sent %ld packets (max %d)", g_max_block_pkts, SEND_PER_BLOCK_MAX);
     CHECK((g_total_pkts - t0) / secs <= SEND_PER_SECOND * 1.01, "%.0f packets/s", (g_total_pkts - t0) / secs);
     CHECK(g_bad_cable == 0, "%d packets not on cable 2 SysEx", g_bad_cable);
@@ -204,11 +206,9 @@ static void test_midi(void) {
 
     /* POWER Hub: the guard is off, so a bright scene goes over. */
     api->set_param(v, "power", "Hub");
-    api->set_param(v, "color", "Bone");
     api->set_param(v, "scene", "Pulse");
-    api->set_param(v, "react", "1");
     double hub = 0;
-    for (int k = 0; k < 16; k++) { run(v, &s, 0.25, 1, 1); double p = display_power(GRID_MATRIX); if (p > hub) hub = p; }
+    for (int k = 0; k < 40; k++) { run(v, &s, 0.13, 1, 1); double p = display_power(GRID_MATRIX); if (p > hub) hub = p; }
     CHECK(hub > POWER_BUDGET, "POWER Hub never went over the budget (%.0f)", hub);
     api->set_param(v, "power", "Port");
 
@@ -427,12 +427,12 @@ static void test_scenes(void) {
     printf("  %d scenes, at most %.3f ms a frame\n", SCENE_COUNT, worst_ms);
 
     /* Every Look knob visibly changes the picture (the user, 2026-10-10: the
-     * controls must have a tangible effect). Rings, 8 s, one knob at a time. */
+     * controls must have a tangible effect). Sweep, 8 s, one knob at a time (Rings would hide FOLD: it is symmetric already). */
     static const int other[7] = { 7, 4, 3, 0, 1, 0, 3 };   /* Mono, 1/16, 4, Off, Sides, Hold, Flash */
     static const char *const kname[7] = { "COLOR", "RATE", "SIZE", "TRAIL", "FOLD", "SHIFT", "REACT" };
     static uint8_t ref[8 * VIZ_FPS][NPAD][3];
     for (int knob = -1; knob < 7; knob++) {
-        viz_look_t look = base_look(1);   /* Rings */
+        viz_look_t look = base_look(4);   /* Sweep */
         int *kv = &look.k.color;
         if (knob >= 0) kv[knob] = other[knob];
         viz_render_t *r = viz_render_new(42);
@@ -442,7 +442,7 @@ static void test_scenes(void) {
             if (knob < 0) memcpy(ref[n], fr.rgb, sizeof ref[n]);
             else differ += memcmp(ref[n], fr.rgb, sizeof ref[n]) != 0;
         }
-        if (knob >= 0) CHECK(differ > 2 * VIZ_FPS, "%s barely changes Rings: %ld of %d frames differ", kname[knob], differ, 8 * VIZ_FPS);
+        if (knob >= 0) CHECK(differ > 2 * VIZ_FPS, "%s barely changes Sweep: %ld of %d frames differ", kname[knob], differ, 8 * VIZ_FPS);
         viz_render_free(r);
     }
 

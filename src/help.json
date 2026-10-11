@@ -4,7 +4,7 @@
     {
       "title": "Overview",
       "lines": [
-        "Living light on a",
+        "Light shows on a",
         "grid for whatever",
         "Move is playing.",
         "",
@@ -48,10 +48,16 @@
         "plays the Move's",
         "selected track.",
         "",
-        "For a clean",
-        "picture, turn off",
-        "Move's MIDI out to",
-        "USB-A."
+        "Drums lighting",
+        "pads? Set the Move",
+        "track's MIDI out",
+        "channel to 7 or",
+        "higher. The Matrix",
+        "ignores those.",
+        "If the track plays",
+        "a Schwung synth,",
+        "set its Recv Ch to",
+        "match."
       ]
     },
     {
@@ -104,19 +110,26 @@
     {
       "title": "Look",
       "lines": [
-        "SCENE: the picture.",
-        "COLOR: the colours.",
-        "FLOW: how fast it",
-        "moves.",
-        "GROW: how much",
-        "detail.",
-        "BLOOM: glow and",
-        "trails.",
-        "REACT: how hard the",
-        "music pushes it.",
-        "WARP: turbulence.",
-        "DRIFT: how fast the",
-        "colours wander."
+        "SCENE: 100 shapes,",
+        "then 6 soft ones.",
+        "COLOR: the colour",
+        "set.",
+        "RATE: how often it",
+        "steps, 1 bar to",
+        "1/16.",
+        "SIZE: shapes 1 to",
+        "4 pads big.",
+        "TRAIL: how long",
+        "lights linger.",
+        "FOLD: mirror the",
+        "corner: Sides, Top,",
+        "Four or Eight.",
+        "SHIFT: swap colours",
+        "each bar, beat or",
+        "kick, or Hold.",
+        "REACT: what a kick",
+        "does: Glow, Grow,",
+        "Flash or Flip."
       ]
     },
     {

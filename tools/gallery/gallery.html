@@ -214,7 +214,7 @@ const KNOBS = [
   { key: "rate", label: "RATE", what: "How fast it steps, locked to the beat: one step per bar, half, beat, 8th or 16th.", opts: ["1 bar", "1/2", "1/4", "1/8", "1/16"], def: 2 },
   { key: "size", label: "SIZE", what: "How big or thick the shapes are, in pads.", opts: ["1", "2", "3", "4"], def: 1 },
   { key: "trail", label: "TRAIL", what: "How long lights linger after they move on. Off is hard-edged.", opts: ["Off", "Short", "Medium", "Long", "Smear"], def: 1 },
-  { key: "mirror", label: "MIRROR", what: "Folds the picture: left/right, top/bottom, four ways or eight ways (kaleidoscope).", opts: ["Off", "Sides", "Top", "Four", "Eight"], def: 0 },
+  { key: "mirror", label: "FOLD", what: "Folds the picture: left/right, top/bottom, four ways or eight ways (kaleidoscope).", opts: ["Off", "Sides", "Top", "Four", "Eight"], def: 0 },
   { key: "shift", label: "SHIFT", what: "When the colours swap places: never, every bar, every beat, or on every kick.", opts: ["Hold", "Bar", "Beat", "Kick"], def: 1 },
   { key: "react", label: "REACT", what: "What a kick does: nothing, brighten, grow the shapes, flash the grid, or flip lit and dark.", opts: ["Off", "Glow", "Grow", "Flash", "Flip"], def: 1 },
 ];
@@ -763,7 +763,7 @@ class Player {
       const col = colourOf(ci, x, y, sh), k = (y * 8 + x) * 3;
       for (let j = 0; j < 3; j++) cur[k + j] = Math.max(cur[k + j], col[j] * Math.min(1, a)); } };
     this.sc.draw(g, c, this.st);
-    // MIRROR: fold so the top-left part is copied to the rest.
+    // FOLD: fold so the top-left part is copied to the rest.
     const m = knob.mirror, out = this.out;
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
       let sx = x, sy = y;
@@ -866,7 +866,7 @@ function setKnob(key, v) {
   if (key === "scene") { big.setScene(v); const sc = SCENES[v];
     document.getElementById("bigName").textContent = `${v + 1}. ${sc.name}`;
     document.getElementById("bigDesc").textContent = sc.desc;
-    document.getElementById("bigUses").innerHTML = `Knobs that change the shape: <b>${sc.uses}</b>. COLOR, TRAIL, MIRROR, SHIFT and REACT work on every scene.`;
+    document.getElementById("bigUses").innerHTML = `Knobs that change the shape: <b>${sc.uses}</b>. COLOR, TRAIL, FOLD, SHIFT and REACT work on every scene.`;
     tiles.forEach(({ el }, i) => el.classList.toggle("sel", i === v)); }
 }
 KNOBS.forEach((k) => setKnob(k.key, knob[k.key]));
