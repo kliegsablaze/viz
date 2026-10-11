@@ -57,6 +57,14 @@ button.on { background: var(--accent); color: #000; border-color: var(--accent);
 .verdict button.k.on { background: var(--keep); border-color: var(--keep); color: #000; }
 .verdict button.m.on { background: var(--maybe); border-color: var(--maybe); color: #000; }
 .verdict button.d.on { background: var(--drop); border-color: var(--drop); color: #000; }
+.tile .tags { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+.tile .tag { font-size: 11px; border-radius: 4px; padding: 1px 6px; background: var(--line); color: var(--text); }
+.tile .tag.white { background: #e8e8e8; color: #000; }
+.tile .tag.flicker { background: #ff5a5a; color: #000; }
+.tile .tag.still { background: #6a7cff; color: #000; }
+.tile .tag.sound { background: #888; color: #000; }
+.review-note { margin: 0 16px 12px; color: var(--dim); font-size: 13px; max-width: 900px; }
+.review-note b { color: var(--text); }
 .summary { margin: 0 16px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 .summary pre { white-space: pre-wrap; margin: 8px 0; color: var(--text); font: 13px/1.5 ui-monospace, Menlo, monospace; }
 </style>
@@ -80,8 +88,15 @@ button.on { background: var(--accent); color: #000; border-color: var(--accent);
   </div>
 </div>
 
+<div class="review-note" id="reviewNote"><b>Review, 2026-10-11.</b> These scenes were measured with the gallery's engine (tools/gallery/score_scenes.mjs) and flagged:
+  <b>White</b>: a lot of white-ish light. It comes mostly from the pale third colour of Ice and Mint and from Mono, so the scenes that paint the whole grid in it suffer most (try COLOR Ice);
+  <b>Flicker</b>: many pads jump between dark and bright in a single frame;
+  <b>Still</b>: hardly moves in Beat mode (no sound), the mode Viz starts in;
+  <b>Sound only</b>: dark in Beat mode, and SEQ's Random already skips it there.
+  Beat mode below is on, as on the Move by default. Mark each one Keep, Maybe or Drop.</div>
 <div class="filter" id="filter">Show:
-  <button data-f="all" class="on">All</button><button data-f="new">New</button><button data-f="unmarked">Not marked</button><button data-f="keep">Kept</button><button data-f="drop">Dropped</button>
+  <button data-f="review" class="on">Review</button><button data-f="all">All</button><button data-f="new">New</button><button data-f="unmarked">Not marked</button><button data-f="keep">Kept</button><button data-f="drop">Dropped</button>
+  <label style="margin-left:12px"><input type="checkbox" id="beatMode" checked> Beat mode (the lights ignore the sound)</label>
   <span id="fcount"></span></div>
 <div class="grid" id="grid"></div>
 
@@ -814,9 +829,14 @@ class Player {
 }
 
 /* ---------------- page ---------------- */
+/* The scene review of 2026-10-11 (tools/gallery/score_scenes.mjs): why each
+ * scene is up for removal, with its scores. Fresh picks, under their own key. */
+const REVIEW = {"Rings":{"why":["flicker"],"white":0.062,"flicker":1.37,"still":0.01},"Diamond":{"why":["flicker"],"white":0.047,"flicker":1.37,"still":0.01},"Burst":{"why":["sound","white","flicker"],"white":0.116,"flicker":1.29,"still":1},"Cross":{"why":["white"],"white":0.106,"flicker":0.58,"still":0.1},"Rise":{"why":["white","still"],"white":0.088,"flicker":0.4,"still":0.54},"Rain":{"why":["sound"],"white":0.05,"flicker":0.65,"still":1},"Bars":{"why":["sound"],"white":0.061,"flicker":0.33,"still":1},"Kit":{"why":["sound"],"white":0.006,"flicker":0.38,"still":1},"Icons":{"why":["white"],"white":0.084,"flicker":0.49,"still":0.13},"Arrow":{"why":["flicker"],"white":0.073,"flicker":1.12,"still":0},"Trace":{"why":["flicker","still"],"white":0.052,"flicker":1.33,"still":0.84},"Doors":{"why":["flicker"],"white":0.07,"flicker":1.22,"still":0},"Noughts":{"why":["still"],"white":0.049,"flicker":0.12,"still":0.71},"Lander":{"why":["still"],"white":0.016,"flicker":0.08,"still":0.49},"Tanks":{"why":["still"],"white":0.023,"flicker":0.22,"still":0.84},"Speaker":{"why":["still"],"white":0.065,"flicker":0.45,"still":0.82},"Charge":{"why":["still"],"white":0.025,"flicker":0.12,"still":0.57},"Wipe":{"why":["white"],"white":0.17,"flicker":0.75,"still":0},"Curtain":{"why":["white"],"white":0.17,"flicker":0.78,"still":0},"Iris":{"why":["white"],"white":0.169,"flicker":0.77,"still":0},"Pie":{"why":["white"],"white":0.169,"flicker":0.74,"still":0},"Diag":{"why":["white"],"white":0.17,"flicker":0.77,"still":0},"Zoom":{"why":["white","flicker"],"white":0.082,"flicker":1.35,"still":0.01},"Piston":{"why":["white","flicker"],"white":0.12,"flicker":1.16,"still":0},"Frame":{"why":["white","still"],"white":0.115,"flicker":0.2,"still":0.48},"Stairs":{"why":["still"],"white":0.046,"flicker":0.25,"still":0.56},"Swap":{"why":["flicker"],"white":0.056,"flicker":1.26,"still":0.01},"Bass":{"why":["sound","white"],"white":0.086,"flicker":0.55,"still":1},"Pads":{"why":["sound"],"white":0.007,"flicker":0.46,"still":0.85},"Tally":{"why":["sound","white"],"white":0.08,"flicker":0.14,"still":0.7},"Hoop":{"why":["still"],"white":0.01,"flicker":0.24,"still":0.87},"Coil":{"why":["white"],"white":0.169,"flicker":0.74,"still":0},"Goal":{"why":["still"],"white":0.016,"flicker":0.24,"still":0.45},"Mow":{"why":["white"],"white":0.169,"flicker":0.74,"still":0},"Pour":{"why":["white"],"white":0.17,"flicker":0.74,"still":0},"Weave":{"why":["white"],"white":0.169,"flicker":0.74,"still":0}};
+const TAG = { white: "White", flicker: "Flicker", still: "Still", sound: "Sound only" };
+const VKEY = "viz-gallery-review-2026-10-11";
 let verdicts = {};
-try { verdicts = JSON.parse(localStorage.getItem("viz-gallery-verdicts") || "{}"); } catch (e) { verdicts = {}; }
-function saveVerdicts() { try { localStorage.setItem("viz-gallery-verdicts", JSON.stringify(verdicts)); } catch (e) {} }
+try { verdicts = JSON.parse(localStorage.getItem(VKEY) || "{}"); } catch (e) { verdicts = {}; }
+function saveVerdicts() { try { localStorage.setItem(VKEY, JSON.stringify(verdicts)); } catch (e) {} }
 
 const big = new Player(0, document.getElementById("big"));
 const tiles = [];
@@ -825,14 +845,14 @@ const grid = document.getElementById("grid");
 SCENES.forEach((sc, i) => {
   const el = document.createElement("div"); el.className = "tile";
   el.innerHTML = `<canvas width="200" height="200"></canvas><div class="name"><span>${sc.name}${sc.fresh ? ' <span class="new">NEW</span>' : ""}</span><span class="num">${i + 1}</span></div>
-    <div class="desc">${sc.desc}</div><div class="verdict"><button class="k">Keep</button><button class="m">Maybe</button><button class="d">Drop</button></div>`;
+    ${REVIEW[sc.name] ? `<div class="tags">${REVIEW[sc.name].why.map((w) => `<span class="tag ${w}">${TAG[w]}</span>`).join("")}</div>` : ""}<div class="desc">${sc.desc}</div><div class="verdict"><button class="k">Keep</button><button class="m">Maybe</button><button class="d">Drop</button></div>`;
   grid.appendChild(el);
   const p = new Player(i, el.querySelector("canvas")); const t = { el, p, vis: true }; tiles.push(t); seen.observe(el); el._t = t;
   el.addEventListener("click", (e) => { if (e.target.tagName !== "BUTTON") setKnob("scene", i); });
   const set = (v) => { verdicts[sc.name] = verdicts[sc.name] === v ? undefined : v; saveVerdicts(); refreshVerdicts(); };
   el.querySelector(".k").onclick = () => set("keep"); el.querySelector(".m").onclick = () => set("maybe"); el.querySelector(".d").onclick = () => set("drop");
 });
-let filt = "all";
+let filt = "review";
 document.querySelectorAll("#filter button").forEach((b) => b.onclick = () => { filt = b.dataset.f;
   document.querySelectorAll("#filter button").forEach((x) => x.classList.toggle("on", x === b)); refreshVerdicts(); });
 function refreshVerdicts() {
@@ -840,8 +860,8 @@ function refreshVerdicts() {
   tiles.forEach(({ el }, i) => { const v = verdicts[SCENES[i].name];
     el.classList.toggle("keep", v === "keep"); el.classList.toggle("maybe", v === "maybe"); el.classList.toggle("drop", v === "drop");
     el.querySelector(".k").classList.toggle("on", v === "keep"); el.querySelector(".m").classList.toggle("on", v === "maybe"); el.querySelector(".d").classList.toggle("on", v === "drop");
-    groups[v || "unmarked"].push(SCENES[i].name);
-    const show = filt === "all" || (filt === "new" && SCENES[i].fresh) || (filt === "unmarked" && !v) || filt === v;
+    if (REVIEW[SCENES[i].name] || v) groups[v || "unmarked"].push(SCENES[i].name);
+    const show = filt === "all" || (filt === "review" && REVIEW[SCENES[i].name]) || (filt === "new" && SCENES[i].fresh) || (filt === "unmarked" && !v) || filt === v;
     el.style.display = show ? "" : "none"; });
   document.getElementById("fcount").textContent = `${tiles.filter(({ el }) => el.style.display !== "none").length} of ${SCENES.length} scenes`;
   document.getElementById("picks").textContent =
@@ -884,11 +904,15 @@ document.getElementById("sound").onclick = (e) => {
 };
 document.getElementById("copy").onclick = () => { navigator.clipboard && navigator.clipboard.writeText(document.getElementById("picks").textContent); };
 
+const beatMode = document.getElementById("beatMode");
 let lastT = performance.now();
 function loop(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   const beats = beatsNow(), time = now / 1000;
-  listen(beats, dt);
+  if (beatMode.checked) {     /* Beat mode: Viz hears nothing */
+    Object.assign(feat, { kick: 0, snare: 0, hat: 0, bass: 0, kickNow: false, snareNow: false, hatNow: false, last16: -1 });
+    feat.bands.fill(0);
+  } else listen(beats, dt);
   big.frame(beats, dt, time);
   for (const t of tiles) if (t.vis && t.el.style.display !== "none") t.p.frame(beats, dt, time); else t.p.frame(beats, dt, time, true);
   requestAnimationFrame(loop);
