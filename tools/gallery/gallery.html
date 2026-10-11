@@ -48,6 +48,7 @@ button.on { background: var(--accent); color: #000; border-color: var(--accent);
 .tile.drop { opacity: .45; }
 .tile canvas { width: 100%; height: auto; display: block; }
 .tile .name { font-weight: 600; margin-top: 6px; display: flex; justify-content: space-between; }
+.tile .new { font-size: 10px; background: var(--accent); color: #000; border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: 2px; }
 .tile .num { color: var(--dim); font-weight: 400; }
 .tile .desc { color: var(--dim); font-size: 12px; min-height: 34px; }
 .verdict { display: flex; gap: 6px; margin-top: 8px; }
@@ -222,6 +223,9 @@ const cheb = (x, y) => Math.max(Math.abs(x - C), Math.abs(y - C));
 const manh = (x, y) => Math.abs(x - C) + Math.abs(y - C);
 const tri = (n, m) => { const p = n % (2 * m); return p < m ? p : 2 * m - p; };
 function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; }; }
+function ringPath(k) { const lo = 3 - k, hi = 4 + k, p = [];
+  for (let x = lo; x <= hi; x++) p.push([x, lo]); for (let y = lo + 1; y <= hi; y++) p.push([hi, y]);
+  for (let x = hi - 1; x >= lo; x--) p.push([x, hi]); for (let y = hi - 1; y > lo; y--) p.push([lo, y]); return p; }
 function each(fn) { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) fn(x, y); }
 
 const SCENES = [
@@ -295,25 +299,11 @@ const SCENES = [
       st.d = st.d.filter((d) => (c.step + c.f - d.b) * 4 < 11);
       for (const d of st.d) { const y = Math.floor((c.step + c.f - d.b) * 4);
         for (let k = 0; k < 3; k++) if (y - k >= 0 && y - k < 8) g.set(d.x, y - k, d.ci, 1 - k * .35); } } },
-  { name: "Blocks", uses: "RATE SIZE", desc: "A SIZE-by-SIZE block pops up somewhere new on every step and on every kick.",
-    init(st) { st.r = rng(11); st.list = []; st.last = -1; },
-    draw(g, c, st) { const add = () => st.list.push({ x: Math.floor(st.r() * (9 - c.s)), y: Math.floor(st.r() * (9 - c.s)), s: c.s, ci: Math.floor(st.r() * 3), t: c.time });
-      if (c.step !== st.last) { st.last = c.step; add(); } if (c.kick) add();
-      st.list = st.list.filter((b) => c.time - b.t < .35);
-      for (const b of st.list) for (let y = b.y; y < b.y + b.s; y++) for (let x = b.x; x < b.x + b.s; x++) g.set(x, y, b.ci, 1); } },
-  { name: "Sparkle", uses: "SIZE", desc: "Pads twinkle on every hi-hat. SIZE sets how many at once.",
-    init(st) { st.r = rng(5); st.p = []; },
-    draw(g, c, st) { if (c.hat) for (let i = 0; i < c.s * 2; i++) st.p.push({ x: Math.floor(st.r() * 8), y: Math.floor(st.r() * 8), ci: Math.floor(st.r() * 3), t: c.time });
-      st.p = st.p.filter((p) => c.time - p.t < .25); for (const p of st.p) g.set(p.x, p.y, p.ci, 1 - (c.time - p.t) / .25); } },
   { name: "Bars", uses: "SIZE", desc: "The classic equalizer: eight frequency bands as columns. SIZE makes fewer, wider bars.",
     draw(g, c) { const w = c.s === 3 ? 4 : c.s === 4 ? 8 : c.s, n = 8 / w;
       for (let i = 0; i < n; i++) { let v = 0; for (let k = i * w; k < (i + 1) * w; k++) v = Math.max(v, feat.bands[k]);
         const h = Math.round(v * 8);
         for (let x = i * w; x < (i + 1) * w; x++) for (let r = 0; r < h; r++) g.set(x, 7 - r, r < 3 ? 0 : r < 6 ? 1 : 2, 1); } } },
-  { name: "Split", uses: "SIZE", desc: "The equalizer again, growing up and down from the middle row.",
-    draw(g, c) { const w = c.s === 3 ? 4 : c.s === 4 ? 8 : c.s, n = 8 / w;
-      for (let i = 0; i < n; i++) { let v = 0; for (let k = i * w; k < (i + 1) * w; k++) v = Math.max(v, feat.bands[k]);
-        const h = v * 4; for (let x = i * w; x < (i + 1) * w; x++) for (let y = 0; y < 8; y++) { const d = Math.abs(y - C) + .5; if (d <= h + .3) g.set(x, y, d < 2 ? 2 : d < 3 ? 1 : 0, 1); } } } },
   { name: "Spiral", uses: "RATE SIZE", desc: "Two spiral arms turn round the centre, a quarter turn per step. SIZE thickens the arms.",
     draw(g, c) { const ph = (c.step + c.f) / 4;
       each((x, y) => { const u = Math.atan2(y - C, x - C) / (2 * Math.PI) + Math.hypot(x - C, y - C) * .14 - ph, v = u * 2, fr = ((v % 1) + 1) % 1;
@@ -322,16 +312,6 @@ const SCENES = [
     draw(g, c) { const n = c.s + 1, a = c.step * Math.PI / 8;
       each((x, y) => { let u = (Math.atan2(y - C, x - C) - a) / (2 * Math.PI); u = ((u % 1) + 1) % 1; const k = Math.floor(u * 2 * n);
         if (k % 2 === 0) g.set(x, y, (k / 2) % 3, 1); }); } },
-  { name: "Zigzag", uses: "RATE SIZE", desc: "Zigzag lines slide sideways, one pad per step.",
-    draw(g, c) { const t = Math.min(c.s, 3);
-      each((x, y) => { const z = tri(x + c.step, 3), d = y - z, m = ((d % 4) + 4) % 4;
-        if (m < t) g.set(x, y, ((Math.floor(d / 4) % 2) + 2) % 2, 1); }); } },
-  { name: "Fill", uses: "RATE SIZE", desc: "Pads switch on in a scattered order, SIZE x 4 per step, until the grid is full; then it flashes and starts again.",
-    draw(g, c) { const n = 4 * c.s, L = Math.ceil(64 / n) + 1, cyc = Math.floor(c.step / L), k = c.step % L;
-      const r = rng(cyc * 7919 + 13), perm = [...Array(64).keys()];
-      for (let i = 63; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
-      if (k === L - 1) { each((x, y) => g.set(x, y, 2, 1 - c.f)); return; }
-      for (let i = 0; i < Math.min(64, (k + 1) * n); i++) g.set(perm[i] % 8, perm[i] >> 3, cyc % 2, 1); } },
   { name: "Kit", uses: "SIZE", desc: "Each drum has its own shape: the kick a centre square, the snare the four corners, the hi-hat the outer ring.",
     draw(g, c) { const r = .5 + c.s * .75;
       each((x, y) => { const d = cheb(x, y);
@@ -364,13 +344,6 @@ const SCENES = [
     draw(g, c) { const p = Math.floor(c.f * 4), ring = 3 - p;
       each((x, y) => { const dx = Math.abs(x - C), dy = Math.abs(y - C);
         if (Math.floor(cheb(x, y)) === ring && Math.abs(dx - dy) < c.s) g.set(x, y, c.step % 3, 1); }); } },
-  { name: "Laser", uses: "RATE SIZE", desc: "A straight beam slashes across at a new angle on every step and every kick.",
-    init(st) { st.r = rng(21); st.l = []; st.last = -1; },
-    draw(g, c, st) { const add = () => { const a = st.r() * Math.PI; st.l.push({ a, px: 2 + st.r() * 4, py: 2 + st.r() * 4, ci: Math.floor(st.r() * 3), t: c.time }); };
-      if (c.step !== st.last) { st.last = c.step; add(); } if (c.kick) add();
-      st.l = st.l.filter((l) => c.time - l.t < .2);
-      for (const l of st.l) each((x, y) => { const d = Math.abs((x + .5 - l.px) * Math.sin(l.a) - (y + .5 - l.py) * Math.cos(l.a));
-        if (d < .3 + c.s * .25) g.set(x, y, l.ci, 1); }); } },
   { name: "Stack", uses: "RATE SIZE", desc: "Blocks drop and stack up like Tetris, one per step. Full rows clear; when it reaches the top, the grid flashes and empties.",
     init(st) { st.r = rng(31); st.occ = new Int8Array(64).fill(-1); st.b = null; st.last = -1; st.flash = -9; },
     draw(g, c, st) {
@@ -391,26 +364,14 @@ const SCENES = [
       if (c.f < .45) { const y = 7 - Math.floor((7 - ty) * c.f / .45); g.set(x, y, 2, 1); g.set(x, y + 1, 2, .4); }
       else { const R = (c.f - .45) / .55 * (1.5 + c.s);
         each((px, py) => { const d = Math.hypot(px - x, py - ty); if (Math.abs(d - R) < .6) g.set(px, py, ci, 1 - (c.f - .45) * .8); }); } } },
-  { name: "Star", uses: "SIZE", desc: "Eight arms shoot out from the centre; each arm's length is one frequency band. SIZE widens them.",
-    draw(g, c) { each((x, y) => { const ang = Math.atan2(y - C, x - C), k = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
-      const diff = Math.abs(ang - Math.round(ang / (Math.PI / 4)) * Math.PI / 4), r = cheb(x, y);
-      if (diff < .2 + c.s * .12 && r < feat.bands[k] * 4 + .6) g.set(x, y, r < 1.5 ? 2 : r < 2.5 ? 1 : 0, 1); }); } },
   { name: "Halves", uses: "RATE SIZE", desc: "The grid is cut into SIZE + 1 bands that light one after another. The cut turns sideways each round.",
     draw(g, c) { const n = c.s + 1, k = c.step % n, vert = Math.floor(c.step / n) % 2;
       each((x, y) => { const v = vert ? y : x; if (Math.floor(v * n / 8) === k) g.set(x, y, k % 3, 1); }); } },
-  { name: "Bricks", uses: "RATE SIZE", desc: "Rows of bricks slide in opposite directions, one pad per step. SIZE sets the brick length.",
-    draw(g, c) { const L = c.s + 1, P = L + 1;
-      each((x, y) => { const v = x + (y % 2 ? c.step : -c.step) + y * 2, m = ((v % P) + P) % P;
-        if (m < L) g.set(x, y, ((Math.floor(v / P) % 2) + 2) % 2 + (y % 2), 1); }); } },
   { name: "Pong", uses: "RATE SIZE", desc: "A game of Pong: the ball moves four pads per step and the paddles chase it. SIZE sets the paddle length.",
     draw(g, c) { const n = Math.floor((c.step + c.f) * 4), bx = 1 + tri(n, 5), by = tri(n + 3, 7), L = c.s + 1;
       const py = Math.max(0, Math.min(8 - L, by - Math.floor(L / 2)));
       for (let i = 0; i < L; i++) { g.set(0, py + i, 0, 1); g.set(7, py + i, 1, 1); }
       g.set(bx, by, 2, 1); } },
-  { name: "Tiles", uses: "RATE SIZE", desc: "A mosaic of tiles that change colour on every step. SIZE sets the tile size.",
-    draw(g, c) { const t = [1, 2, 4, 4][c.s - 1];
-      each((x, y) => { const tx = Math.floor(x / t), ty = Math.floor(y / t), r = rng((c.step * 131 + tx * 17 + ty * 7) * 2654435761 + 5);
-        r(); const v = Math.floor(r() * 4); if (v < 3) g.set(x, y, v, 1); }); } },
   { name: "Marquee", uses: "RATE SIZE", desc: "Dashes chase round the square rings like theatre lights; each ring goes the opposite way. SIZE sets the dash length.",
     draw(g, c) { each((x, y) => { const k = Math.floor(cheb(x, y)), lo = 3 - k, hi = 4 + k, n = hi - lo;
       let p; if (y === lo) p = x - lo; else if (x === hi) p = n + y - lo; else if (y === hi) p = 2 * n + hi - x; else p = 3 * n + hi - y;
@@ -424,6 +385,71 @@ const SCENES = [
       while (st.n < n) { st.n++; st.h.shift(); st.h.push(st.q.length ? st.q.shift() : 5); }
       for (let x = 0; x < 8; x++) { const a = st.h[x], b = x ? st.h[x - 1] : a, lo = Math.min(a, b), hi = Math.max(a, b);
         for (let y = lo; y <= hi; y++) g.set(x, y, y === a ? (a === 5 ? 0 : 2) : 1, 1); } } },
+  { name: "Orbit", fresh: true, uses: "RATE SIZE", desc: "A comet runs round the outer ring and a second one round the inner ring the other way, one pad per step. The centre beats with the kick. SIZE sets the tail length.",
+    draw(g, c) { const outer = ringPath(3), inner = ringPath(1), L = c.s + 1;
+      for (let i = 0; i < L; i++) { const a = outer[((c.step - i) % 28 + 28) % 28], b = inner[((-c.step + i) % 12 + 12) % 12];
+        g.set(a[0], a[1], 0, 1 - i / (L + 1)); g.set(b[0], b[1], 1, 1 - i / (L + 1)); }
+      for (const [x, y] of ringPath(0)) g.set(x, y, 2, feat.kick); } },
+  { name: "Invaders", fresh: true, uses: "RATE", desc: "Space invaders march side to side and creep down a row every four steps. Your cannon at the bottom fires on every kick.",
+    init(st) { st.shots = []; },
+    draw(g, c, st) { const fr = c.step % 2 ? ["###", "#.#"] : ["###", ".#."], ox = c.step % 2, oy = Math.floor(c.step / 4) % 3;
+      for (const [ix, iy] of [[0, 0], [4, 0], [0, 3], [4, 3]]) for (let y = 0; y < 2; y++) for (let x = 0; x < 3; x++)
+        if (fr[y][x] === "#") g.set(ix + x + ox, iy + y + oy, iy ? 1 : 0, 1);
+      const px = 1 + tri(Math.floor((c.step + c.f) * 2), 5);
+      g.set(px, 7, 2, 1); g.set(px - 1, 7, 2, 1); g.set(px + 1, 7, 2, 1); g.set(px, 6, 2, 1);
+      if (c.kick) st.shots.push({ x: px, t: c.time });
+      st.shots = st.shots.filter((s) => c.time - s.t < .3);
+      for (const s of st.shots) g.set(s.x, 5 - Math.floor((c.time - s.t) / .3 * 6), 2, 1); } },
+  { name: "Breakout", fresh: true, uses: "RATE SIZE", desc: "The ball knocks out bricks, two moves per step. When the wall is gone it builds again. SIZE sets the paddle width.",
+    init(st) { st.b = new Uint8Array(16).fill(1); st.x = 3; st.y = 5; st.vx = 1; st.vy = -1; st.n = -1; },
+    draw(g, c, st) { const n = Math.floor((c.step + c.f) * 2);
+      if (st.n < 0) st.n = n;
+      while (st.n < n) { st.n++;
+        if (st.x + st.vx < 0 || st.x + st.vx > 7) st.vx = -st.vx;
+        if (st.y + st.vy < 0 || st.y + st.vy > 6) st.vy = -st.vy;
+        const nx = st.x + st.vx, ny = st.y + st.vy;
+        if (ny < 2 && st.b[ny * 8 + nx]) { st.b[ny * 8 + nx] = 0; st.vy = -st.vy; } else { st.x = nx; st.y = ny; }
+        if (!st.b.some((v) => v)) st.b.fill(1); }
+      for (let i = 0; i < 16; i++) if (st.b[i]) g.set(i % 8, i >> 3, i >> 3, 1);
+      const w = c.s + 1, px = Math.max(0, Math.min(8 - w, st.x - Math.floor(w / 2)));
+      for (let i = 0; i < w; i++) g.set(px + i, 7, 2, 1);
+      g.set(st.x, st.y, 2, 1); } },
+  { name: "Text", fresh: true, uses: "RATE", desc: "The word VIZ scrolls across, two columns per step. (The word could be anything you like.)",
+    draw(g, c) { const F = { V: ["#...#", "#...#", "#...#", "#...#", ".#.#.", ".#.#.", "..#.."], I: ["###", ".#.", ".#.", ".#.", ".#.", ".#.", "###"],
+        Z: ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"] };
+      const cols = []; [..."VIZ"].forEach((ch, li) => { const f = F[ch]; for (let x = 0; x < f[0].length; x++) cols.push({ li, rows: f.map((r) => r[x] === "#") }); cols.push(null); });
+      cols.push(null, null, null, null, null);
+      const off = Math.floor((c.step + c.f) * 2);
+      for (let x = 0; x < 8; x++) { const col = cols[(x + off) % cols.length]; if (!col) continue;
+        for (let y = 0; y < 7; y++) if (col.rows[y]) g.set(x, y + 1, col.li, 1); } } },
+  { name: "Spin", fresh: true, uses: "RATE SIZE", desc: "A square outline turns smoothly, an eighth of a turn per step, and changes colour every quarter turn. SIZE sets how big it is.",
+    draw(g, c) { const a = (c.step + c.f) * Math.PI / 4, R = 1.6 + c.s * .45, ca = Math.cos(a), sa = Math.sin(a);
+      each((x, y) => { const dx = x - C, dy = y - C, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+        if (Math.abs(Math.max(Math.abs(u), Math.abs(v)) - R) < .5) g.set(x, y, Math.floor(c.step / 2) % 3, 1); }); } },
+  { name: "Heart", fresh: true, uses: "RATE", desc: "A heart that beats: big at the start of every step, then small.",
+    draw(g, c) { const big = [".##..##.", "########", "########", "########", ".######.", "..####..", "...##...", "........"];
+      const small = ["........", "........", "..#..#..", ".######.", ".######.", "..####..", "...##...", "........"];
+      const h = c.f < .3 ? big : small;
+      each((x, y) => { if (h[y][x] === "#") g.set(x, y, c.f < .3 ? 0 : 1, 1); }); } },
+  { name: "Sand", fresh: true, uses: "RATE", desc: "An hourglass: sand runs from the top half to the bottom over 16 steps, then the glass turns over.",
+    draw(g, c) { const cyc = Math.floor(c.step / 16), p = ((c.step % 16) + c.f) / 16;
+      const inGlass = (x, y) => y < 4 ? Math.abs(x - C) <= 3.5 - y : Math.abs(x - C) <= y - 3.5;
+      const top = [], bot = []; each((x, y) => { if (inGlass(x, y)) (y < 4 ? top : bot).push([x, y]); });
+      top.sort((a, b) => b[1] - a[1] || Math.abs(a[0] - C) - Math.abs(b[0] - C));
+      bot.sort((a, b) => b[1] - a[1] || Math.abs(a[0] - C) - Math.abs(b[0] - C));
+      const n = top.length, keep = Math.round((1 - p) * n), fallen = n - keep, flip = cyc % 2;
+      const put = (x, y, ci, a) => g.set(x, flip ? 7 - y : y, ci, a);
+      top.forEach(([x, y], i) => put(x, y, i < keep ? 1 : 2, i < keep ? 1 : .12));
+      bot.forEach(([x, y], i) => put(x, y, i < fallen ? 1 : 2, i < fallen ? 1 : .12));
+      if (keep > 0) put(Math.floor(c.step + c.f * 4) % 2 ? 3 : 4, 4 + (Math.floor(c.f * 8) % 3), 0, 1); } },
+  { name: "Chomp", fresh: true, uses: "RATE", desc: "A chomping mouth crosses the grid eating a row of dots. Its mouth snaps shut on every step.",
+    draw(g, c) { const open = [".###.", "###..", "##...", "###..", ".###."], shut = [".###.", "#####", "#####", "#####", ".###."];
+      const px = (Math.floor((c.step + c.f) * 2) % 14) - 5, spr = c.f < .5 ? open : shut;
+      for (let x = 1; x < 8; x += 2) if (x > px + 3) g.set(x, 4, 2, 1);
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) if (spr[y][x] === "#") g.set(px + x, y + 2, 0, 1); } },
+  { name: "Doors", fresh: true, uses: "RATE", desc: "Two doors slam shut at the start of every step, then slide open. They swap between side-to-side and up-and-down.",
+    draw(g, c) { const w = Math.floor(Math.min(1, c.f * 1.6) * 4), vert = c.step % 2;
+      each((x, y) => { const v = vert ? y : x; if (v < 4 - w) g.set(x, y, 0, 1); else if (v >= 4 + w) g.set(x, y, 1, 1); }); } },
 ];
 
 /* ---------------- engine: palette, mirror, react, trail, underglow ---------------- */
@@ -512,7 +538,7 @@ const tiles = [];
 const grid = document.getElementById("grid");
 SCENES.forEach((sc, i) => {
   const el = document.createElement("div"); el.className = "tile";
-  el.innerHTML = `<canvas width="200" height="200"></canvas><div class="name">${sc.name}<span class="num">${i + 1}</span></div>
+  el.innerHTML = `<canvas width="200" height="200"></canvas><div class="name"><span>${sc.name}${sc.fresh ? ' <span class="new">NEW</span>' : ""}</span><span class="num">${i + 1}</span></div>
     <div class="desc">${sc.desc}</div><div class="verdict"><button class="k">Keep</button><button class="m">Maybe</button><button class="d">Drop</button></div>`;
   grid.appendChild(el);
   const p = new Player(i, el.querySelector("canvas")); tiles.push({ el, p });
