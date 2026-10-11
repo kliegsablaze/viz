@@ -79,7 +79,7 @@ static pdef_t k_params[P_COUNT] = {
     { "react",  "Kick reaction",     "REACT", PT_ENUM, viz_shape_react_names, SHAPE_REACTS, 0, 0, 1, NULL, 0 },
     { "mode",  "Sync mode",        "MODE",  PT_ENUM, k_modes, 4, 0, 0, 0, NULL, 1 },
     { "power", "Power source",     "POWER", PT_ENUM, k_power, 2, 0, 0, 0, NULL, 1 },
-    { "light", "Brightness",       "LIGHT", PT_PCT,  NULL, 0, 0, 1, 0.8f, NULL, 1 },
+    { "light", "Brightness",       "LIGHT", PT_PCT,  NULL, 0, 0, 1, 0.5f, NULL, 1 },
     { "grid",  "Grid device",      "GRID",  PT_ENUM, viz_grid_names, GRID_COUNT, 0, 0, 0, NULL, 1 },
     { "cycle", "Journey phrase (bars)", "CYCLE", PT_ENUM, k_cycle, 5, 0, 0, 2, NULL, 1 },
     { "turn",  "Rotation (degrees)", "TURN", PT_ENUM, k_turn, 4, 0, 0, 0, NULL, 1 },
@@ -164,6 +164,13 @@ typedef struct {
     int threaded;
     atomic_int quit;
     int sync_acc;               /* tests: render in step with the audio instead */
+
+    /* MIDI diagnostics (audio thread writes, render thread logs every 2 s) */
+    atomic_long md_calls, md_src[6], md_mbox, md_blocks;
+    atomic_uint md_last[4];
+    atomic_int md_last_i;
+    long md_logged;
+    double md_log_t;
 } viz_t;
 
 #define FRESH 4
@@ -241,6 +248,27 @@ static void render_one(viz_t *s, const viz_features_t *f) {
     s->back = atomic_exchange(&s->mid, s->back | FRESH) & 3;
 }
 
+/* Render thread: every 2 s, when MIDI came in, a line in Schwung's log. */
+static void midi_log(viz_t *s) {
+    if (!g_host || !g_host->log) return;
+    if (++s->md_log_t < 2 * VIZ_FPS) return;
+    s->md_log_t = 0;
+    long calls = atomic_load(&s->md_calls), mbox = atomic_load(&s->md_mbox);
+    if (calls + mbox == s->md_logged) return;
+    s->md_logged = calls + mbox;
+    char b[400];
+    int n = snprintf(b, sizeof b,
+        "viz: midi calls=%ld int=%ld ext=%ld host=%ld bcast=%ld paints=%ld covers=%ld replaced=%ld refused=%ld mbox_c2_noteons=%ld blocks=%ld last=",
+        calls, atomic_load(&s->md_src[0]), atomic_load(&s->md_src[2]), atomic_load(&s->md_src[3]),
+        atomic_load(&s->md_src[4]), s->sender.painted, s->sender.covers, s->sender.replaced, s->sender.cover_refused,
+        mbox, atomic_load(&s->md_blocks));
+    for (int i = 0; i < 4 && n > 0 && n < (int)sizeof b - 16; i++) {
+        unsigned v = atomic_load(&s->md_last[i]);
+        n += snprintf(b + n, sizeof b - (size_t)n, "%u:%02X.%u.%u ", v >> 24, (v >> 16) & 255, (v >> 8) & 255, v & 255);
+    }
+    g_host->log(b);
+}
+
 static void *render_main(void *arg) {
     viz_t *s = arg;
     struct timespec next;
@@ -249,6 +277,7 @@ static void *render_main(void *arg) {
     while (!atomic_load(&s->quit)) {
         read_features(s, &f);
         render_one(s, &f);
+        midi_log(s);
         next.tv_nsec += 1000000000L / VIZ_FPS;
         if (next.tv_nsec >= 1000000000L) { next.tv_nsec -= 1000000000L; next.tv_sec++; }
         struct timespec now;
@@ -424,13 +453,13 @@ static void level(sb_t *b, const char *name, const char *label, const int *keys,
         sb(b, "}");
     }
     if (links)
-        sb(b, ",{\"level\":\"settings\",\"label\":\"Settings\"},{\"level\":\"sequence\",\"label\":\"Sequence\"},"
-              "{\"level\":\"mod\",\"label\":\"Mod\"}");
+        sb(b, ",{\"level\":\"sequence\",\"label\":\"SEQ\"},{\"level\":\"mod\",\"label\":\"MOD\"},"
+              "{\"level\":\"settings\",\"label\":\"Settings\"}");
     sb(b, "]}");
 }
 
-/* Look on root, then Settings, Sequence and Mod, in the order the jog walks
- * them. The Sequence page lists every step's knobs; the gates leave the
+/* Look on root, then SEQ, MOD and Settings, in the order the jog walks
+ * them (the order of root's links). The Sequence page lists every step's knobs; the gates leave the
  * chosen step's, so it reads STEP SCENE BARS PLAY over COLOR RATE SIZE FOLD. */
 static int ui_hierarchy(char *buf, int len) {
     int look[8], set[8], seq[2 + SEQ_STEPS * SF_COUNT], mod[SEQ_MODS * MF_COUNT], n = 0;
@@ -446,11 +475,11 @@ static int ui_hierarchy(char *buf, int len) {
     sb(&b, "{\"modes\":null,\"levels\":{");
     level(&b, "root", "Viz", look, 8, 1);
     sb(&b, ",");
+    level(&b, "sequence", "SEQ", seq, n, 0);
+    sb(&b, ",");
+    level(&b, "mod", "MOD", mod, SEQ_MODS * MF_COUNT, 0);
+    sb(&b, ",");
     level(&b, "settings", "Settings", set, 8, 0);
-    sb(&b, ",");
-    level(&b, "sequence", "Sequence", seq, n, 0);
-    sb(&b, ",");
-    level(&b, "mod", "Mod", mod, SEQ_MODS * MF_COUNT, 0);
     sb(&b, "}}");
     return b.pos < len ? b.pos : -1;
 }
@@ -532,6 +561,15 @@ static void v2_process_block(void *inst, int16_t *io, int frames) {
     int g = pint(s, P_GRID);
     if (g != s->sender.grid) viz_sender_set_grid(&s->sender, g);
     viz_sender_block(&s->sender, send_pkt, NULL);
+
+    /* diagnostics: cable-2 note-ons in Move's MIDI_OUT mailbox (read only) */
+    atomic_fetch_add_explicit(&s->md_blocks, 1, memory_order_relaxed);
+    if (g_host && g_host->mapped_memory) {
+        const uint8_t *mo = g_host->mapped_memory;          /* MIDI_OUT: offset 0, 20 packets */
+        for (int j = 0; j < 80; j += 4)
+            if ((mo[j] >> 4) == 2 && (mo[j] & 15) == 9 && (mo[j + 1] & 0xF0) == 0x90 && mo[j + 3])
+                atomic_fetch_add_explicit(&s->md_mbox, 1, memory_order_relaxed);
+    }
 }
 
 static void v2_set_param(void *inst, const char *key, const char *val) {
@@ -568,8 +606,18 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
  * never called for one. */
 void move_audio_fx_on_midi(void *inst, const uint8_t *msg, int len, int source) {
     viz_t *s = inst;
-    if (!s || !msg || len < 3 || source != MOVE_MIDI_SOURCE_EXTERNAL) return;
-    viz_sender_midi(&s->sender, msg, send_pkt, NULL);
+    if (!s || !msg) return;
+    atomic_fetch_add_explicit(&s->md_calls, 1, memory_order_relaxed);
+    if (source >= 0 && source < 6) atomic_fetch_add_explicit(&s->md_src[source], 1, memory_order_relaxed);
+    if (len >= 3) {
+        int i = atomic_fetch_add_explicit(&s->md_last_i, 1, memory_order_relaxed) & 3;
+        atomic_store_explicit(&s->md_last[i], (unsigned)(source & 0xFF) << 24 | (unsigned)msg[0] << 16 |
+                              (unsigned)msg[1] << 8 | msg[2], memory_order_relaxed);
+    }
+    if (len < 3 || source != MOVE_MIDI_SOURCE_EXTERNAL) return;
+    /* the MIDI_OUT region Move's packet still waits in: offset 0 of the
+     * mailbox the host hands every plugin (schwung_spi_lib.h) */
+    viz_sender_midi(&s->sender, msg, g_host ? g_host->mapped_memory : NULL, send_pkt, NULL);
 }
 
 static void v2_on_midi(void *inst, const uint8_t *msg, int len, int source) {

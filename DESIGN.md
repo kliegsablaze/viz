@@ -6,8 +6,9 @@ in clear colours, stepping on the beat, with eight knobs you can play like an in
 **Status:** 0.1.0 built and installed. On 2026-10-10 the user turned the show from organic
 pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
 gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
-Sequence and Mod pages and the knob pictures were added, and Viz now paints over the notes
-Move sends to the Matrix; their device pass is next.
+Sequence and Mod pages (now SEQ and MOD, before Settings) and the knob pictures were added,
+and Viz now replaces the notes Move sends to the Matrix (passed on the device); the pages'
+device pass is next.
 Written against Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's
 Matrix runs Matrix OS **3.2**.
 
@@ -775,31 +776,45 @@ nothing more.
 
 Move sends each track's notes out of USB-A, and the Matrix's Performance app paints a pad
 for any Note On, Note Off or CC on channels 1–6 (`Performance8x8.cpp:158-192`), whatever
-the port. Left alone, drums blink pads under the show until the refresh comes round.
+the port. Left alone, drums blink pads under the show.
 
-Viz hears those notes as they leave. The shim scans Move's cable-2 MIDI_OUT before each
+**Viz takes the place of each one.** The shim scans Move's cable-2 MIDI_OUT before each
 transfer and hands every note to the Master FX as EXTERNAL (`schwung_shim.c:1478-1640`,
 `shadow_midi.c:430-435`), through the exported `move_audio_fx_on_midi`, which the host looks
-up by name (`shadow_chain_mgmt.c:1766`). The v2 struct's `on_midi` is never called for a
-Master FX; the first build filled only that, and heard nothing. It drains the external ring
-afterwards in the same function (`:7183`, `:7710`), so a packet Viz queues inside `on_midi`
-goes out **in the same USB transfer, after Move's note**. The Matrix handles both in one pass
-of its MIDI loop, before its next LED frame, so the note is never seen.
+up by name (`shadow_chain_mgmt.c:1766`; the v2 struct's `on_midi` is never called for a
+Master FX). The packet is still waiting in the MIDI_OUT region of the mailbox every plugin
+is handed (`mapped_memory`, offset 0), so Viz overwrites it there with its **cover**: one
+Note On for the same pad. The Matrix never receives Move's note. Schwung's own slots already
+had it (the scan dispatches before the Master FX), so Schwung instruments still play.
 
-- **The cover** is one Note On for the same note: the colour of the two Matrix palettes
-  nearest to what Viz is drawing there, and never brighter, so the power guard still holds.
-  Black, the usual case, is exact. One packet can go between the packets of a SysEx
-  message: Matrix OS keeps SysEx state per port and passes channel messages straight to
-  the app (`OS/MIDI/MIDI.cpp:120-200`).
-- **The exact colour** follows: the light is marked unknown, which puts it first in the
-  next message.
-- **Limits:** 4 covers a block (a burst beyond that waits for the re-send), and a cover
-  heard coming back is ignored, so Viz can't feed itself.
+- **Measured** (2026-10-11): first, the cover was *queued* instead. Viz heard and covered
+  every note, yet every note still showed. A queued packet drains into the first empty
+  slot of the same transfer, which can sit ahead of Move's note, so Move's note landed
+  last. Replaced in place: 4,228 of 4,228 notes, none seen on the grid.
+- **The cover's colour is exact on lit pads.** A pad Move's notes hit becomes *hot*. Viz
+  keeps two entries for each hot pad, in the Matrix's custom palettes 1 and 2 (channels 3
+  and 4, written with `41 3D`, to RAM only; Viz never sends the `41 7D` that saves them):
+  - one entry holds what the pad shows now;
+  - the other holds what it will show next, written before the frame that changes it.
+
+  A hot pad takes a new colour only once a palette entry holds it, a few ms late, so the
+  cover (`9x note id`) restores exactly what was there. Only a pad's first hit uses the
+  nearest built-in colour, never brighter. With the palettes up to date, 95% of hits on
+  lit pads in a Rainbow scene keep their exact colour (test); the rest are first hits.
+  Palette writes take turns with frames and only cover hot pads, so they cost little.
+  A custom palette a user made in Performance is overwritten in RAM while Viz runs; the
+  saved copy is untouched.
+- **The exact colour follows** anyway: the pad is marked unknown, which puts it first in the
+  next frame message.
+- **When Move's packet isn't in the mailbox** (a note from another path), the cover is
+  queued instead, at most 4 a block, and Viz ignores its own queued covers coming back.
 - **What it can't see:** a note on a channel the Master FX **MIDI Ch** setting filters out.
   Left on All (the default) Viz hears them all; otherwise the 2 s refresh heals the pad.
 - Move's own pads arrive as INTERNAL and never reach the grid, so they are ignored.
 - On a Launchpad (Programmer mode, notes on channels 1–3 paint the pad of that index) Viz
   marks the light for re-sending but sends no cover; untested.
+- **Diagnostics:** every 2 s while MIDI comes in, Viz logs a `viz: midi` line (notes heard
+  by source, pads hit, covers, replaced, refused, and the last four messages).
 
 ### TURN
 
@@ -810,9 +825,9 @@ the Matrix sits beside the Move. Scenes and the underglow sides rotate together.
 
 ## Control surface
 
-Four pages: page 1 holds the knobs on `root`, and links to the `settings`, `sequence` and
-`mod` levels add pages 2 to 4, in that order (the user named the new ones the third and
-fourth pages). A flat `chain_params` list declares every key, because without
+Four pages: page 1 holds the knobs on `root`, and links to the `sequence`, `mod` and
+`settings` levels add pages 2 to 4, in that order. The user put Settings last and named the
+new pages SEQ and MOD (2026-10-11); the header shows the link's label. A flat `chain_params` list declares every key, because without
 it the Master FX cache reads only the first `params` array
 (`src/host/shadow_chain_mgmt.c:1711-1740`). Wayward is the working example
 (`wayward/src/dsp/wayward.c:1281-1335`). Schwung appends its own *My Presets* and *Module*
@@ -837,13 +852,13 @@ These shape the picture, and each one shows its effect straight away.
 | 7 | `shift` | SHIFT | **Colour swap.** Enum: Hold, Bar, Beat, Kick. When the three colours trade places. Default Bar. |
 | 8 | `react` | REACT | **Kick reaction.** Enum: Off, Glow, Grow, Flash, Flip. What a kick does to any scene (see *Rendering*). Default Glow. |
 
-### Page 2: Settings
+### Page 4: Settings
 
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
 | 1 | `mode` | MODE | **Sync mode.** Enum: Auto / Beat / Sound / Blend (see the table under *Mode*). Default Auto. |
 | 2 | `power` | POWER | **Power source.** Enum: Port / Hub. *Port* (default) keeps every frame inside what the Move's USB-A port can supply (measured; see *The power guard*). *Hub* removes the limit, for a Matrix on a powered USB hub. |
-| 3 | `light` | LIGHT | **Brightness.** Overall level, 0–100%, applied after the power guard, so it can only make things dimmer. Default 80%. |
+| 3 | `light` | LIGHT | **Brightness.** Overall level, 0–100%, applied after the power guard, so it can only make things dimmer. Default 50%. |
 | 4 | `grid` | GRID | **Grid device.** Enum: Matrix / LP Mini MK3 / LP X / LP Pro MK3 / LP MK2 / LP Pro (see *Other grids*). Default Matrix. Launchpads are untested. |
 | 5 | `cycle` | CYCLE | **Journey phrase.** Enum: 4 / 8 / 16 / 32 / 64 bars. Kept for a later Journey (see *Later: Journey and drift*); it does nothing yet. Default 16. |
 | 6 | `turn` | TURN | **Rotation.** Enum: 0° / 90° / 180° / 270°. Default 0°. |
@@ -852,7 +867,7 @@ These shape the picture, and each one shows its effect straight away.
 
 ---
 
-### Page 3: Sequence
+### Page 2: SEQ
 
 STEP, SCENE, BARS and PLAY over COLOR, RATE, SIZE and FOLD. The six step knobs are the chosen
 step's (keys `s1_scene` … `s8_fold`).
@@ -864,11 +879,11 @@ step's (keys `s1_scene` … `s8_fold`).
 | 3 | `sN_bars` | BARS | **Step N length.** Off, Random, 1 beat, 2 beats, 1 bar, 2, 4, 8 bars. Default 1 bar for step 1, Off for the rest. |
 | 4 | `play` | PLAY | **Play the sequence.** Off / On. Default Off. |
 | 5 | `sN_color` | COLOR | **Step N colour set.** Random, Same, then the nine sets. Default Random. |
-| 6 | `sN_rate` | RATE | **Step N steps, on the beat.** Random, Same, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/8, 1/16. Default Same. |
-| 7 | `sN_size` | SIZE | **Step N shape size.** Random, Same, 1–4. Default Same. |
-| 8 | `sN_fold` | FOLD | **Step N mirror fold.** Random, Same, Off, Sides, Top, Four, Eight. Default Same. |
+| 6 | `sN_rate` | RATE | **Step N steps, on the beat.** Random, Same, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/8, 1/16. Default Random. |
+| 7 | `sN_size` | SIZE | **Step N shape size.** Random, Same, 1–4. Default Random. |
+| 8 | `sN_fold` | FOLD | **Step N mirror fold.** Random, Same, Off, Sides, Top, Four, Eight. Default Four. |
 
-### Page 4: Mod
+### Page 3: MOD
 
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
@@ -897,12 +912,16 @@ step's (keys `s1_scene` … `s8_fold`).
   Matrix ignores those channels). It works, but it costs a setting on every track and on
   every Schwung slot's Recv Ch; covering the notes inside Viz (*Move's own notes*) costs
   nothing.
-- **Deleting Move's notes from MIDI_OUT.** A Master FX gets the mailbox pointer, so it
-  could zero Move's packets before they ship. That reaches into Move's own output, which a
-  module has no business doing, and would also silence a synth the user put on USB-A.
+- **Leaving Move's notes alone and covering after them.** The first build queued its cover;
+  it reached the Matrix ahead of Move's note and lost (measured). Replacing the packet in
+  the mailbox is the only order Viz controls. It touches only notes that would paint a
+  Matrix pad (channels 1–6), and only while GRID is Matrix.
+- **Move's MIDI In Only setting.** It stops Move's notes reaching USB-A, but Schwung hears
+  Move's tracks through that same output, so it would silence Schwung instruments.
 - **Only marking the light for re-sending.** The SysEx stream is mid-message most of the
-  time, so the exact repaint lands 10–60 ms late: a visible tick on every drum hit. The
-  one-packet cover closes that gap.
+  time, so the exact repaint lands 10–60 ms late: a visible tick on every drum hit.
+- **Built-in palette colours for every cover.** Close, but on a lit pad the change of shade
+  showed (the user, 2026-10-11). The custom palette entries make it exact.
 - **Organic scenes leading, with icons as a side family** (the first design). The user's
   device verdict reversed it: geometric scenes lead.
 - **A JavaScript canvas or custom on-screen UI.** Fleet rule: knobs and the jog wheel only.
@@ -1082,7 +1101,12 @@ palettes, even between SysEx packets)
 - With the grid dark, 128 Move notes and note-offs on the drum pads are dark again within
   their own transfer; with Pulse lit, every hit light is sent again by SysEx within 80 ms;
   no SysEx message breaks.
-- At most 4 covers a block, and Viz's own cover echoed back draws none.
+- At most 4 queued covers a block, and Viz's own cover echoed back draws none.
+- The fake mailbox ships Move's note in a later slot than queued packets, as on the device:
+  queued covers lose 8 of 8; covers that replace Move's packet win, and touch no other slot.
+- Drum hits on lit pads of a Rainbow scene keep their exact colour at least 90% of the time
+  (95% measured), through custom palettes 1 and 2; the fake Matrix checks every `41 3D`
+  write.
 
 **Listening**
 - A sine sweep raises the bands in order.
@@ -1110,8 +1134,8 @@ viz resolver)
   gallery.
 - STEP shows the playing step and which steps are on; PLAY the loop length; the LFO RATE its
   own KIND; RATE, TRAIL and the LFO RATE move only while touched or just turned.
-- The plan test plans every STEP value with the host's planner: four pages, the Sequence page
-  exactly STEP, SCENE, BARS, PLAY, COLOR, RATE, SIZE, FOLD of that step.
+- The plan test plans every STEP value with the host's planner: four pages (Look, SEQ, MOD,
+  Settings), the SEQ page exactly STEP, SCENE, BARS, PLAY, COLOR, RATE, SIZE, FOLD of that step.
 
 **Scenes**
 - **Parity** (`tests/parity_dump.mjs`, `tests/test_parity.c`). Node runs the gallery's own

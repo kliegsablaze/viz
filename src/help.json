@@ -130,31 +130,7 @@
       ]
     },
     {
-      "title": "Settings",
-      "lines": [
-        "MODE: Auto follows",
-        "the clock while",
-        "Move plays and the",
-        "sound when stopped.",
-        "Beat: clock only.",
-        "Sound: sound only.",
-        "Blend: clock, with",
-        "the sound twice as",
-        "strong.",
-        "",
-        "LIGHT: brightness.",
-        "GRID: which grid.",
-        "CYCLE: bars between",
-        "scene changes (in",
-        "a later version).",
-        "TURN: rotate.",
-        "EDGE: underglow.",
-        "NUDGE: lights",
-        "earlier or later."
-      ]
-    },
-    {
-      "title": "Sequence",
+      "title": "SEQ",
       "lines": [
         "Eight steps take",
         "turns at the Look",
@@ -179,7 +155,7 @@
       ]
     },
     {
-      "title": "Mod",
+      "title": "MOD",
       "lines": [
         "Two LFOs, one a",
         "row.",
@@ -198,6 +174,30 @@
         "Knobs keep what you",
         "set: the LFOs move",
         "the picture only."
+      ]
+    },
+    {
+      "title": "Settings",
+      "lines": [
+        "MODE: Auto follows",
+        "the clock while",
+        "Move plays and the",
+        "sound when stopped.",
+        "Beat: clock only.",
+        "Sound: sound only.",
+        "Blend: clock, with",
+        "the sound twice as",
+        "strong.",
+        "",
+        "LIGHT: brightness.",
+        "GRID: which grid.",
+        "CYCLE: bars between",
+        "scene changes (in",
+        "a later version).",
+        "TURN: rotate.",
+        "EDGE: underglow.",
+        "NUDGE: lights",
+        "earlier or later."
       ]
     }
   ]

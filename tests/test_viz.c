@@ -45,6 +45,8 @@ static long g_block;
 static int g_bad_msg;
 static int g_grid = GRID_MATRIX;
 static int g_setups;
+static uint8_t g_cpal[4][128][3];    /* the Matrix's custom palettes (channels 3-6), 6-bit */
+static long g_pal_msgs;
 
 static int index_valid(int grid, int idx) {
     for (int id = 0; id < NLIGHT; id++) if (viz_grid_index(grid, id) == idx) return 1;
@@ -64,6 +66,15 @@ static void on_message(const uint8_t *m, int n) {
     const uint8_t *b = m + 6;
     int len = n - 7;
     if (g->setup_len && len == g->setup_len && !memcmp(b, g->setup, (size_t)len)) { g_setups++; return; }
+    if (g_grid == GRID_MATRIX && len >= 3 && b[0] == 0x41 && b[1] == 0x3D) {   /* custom palette write */
+        if (b[2] > 1 || (len - 3) % 4) { g_bad_msg++; return; }   /* Viz uses palettes 1 and 2 */
+        for (int i = 3; i < len; i += 4) {
+            if (b[i] > 127 || b[i + 1] > 63 || b[i + 2] > 63 || b[i + 3] > 63) { g_bad_msg++; return; }
+            memcpy(g_cpal[b[2]][b[i]], b + i + 1, 3);
+        }
+        g_pal_msgs++;
+        return;
+    }
     if (b[0] != g->cmd) { g_bad_msg++; if (getenv("VIZ_DUMP")) fprintf(stderr, "bad@%d\n", __LINE__); return; }
     b++; len--;
     int per = g->spec ? 5 : 4, maxv = (1 << g->bits) - 1;
@@ -95,8 +106,9 @@ static void paint_note(const uint8_t m[3]) {
     int id = viz_grid_painted(GRID_MATRIX, m);
     if (id < 0 || g_grid != GRID_MATRIX) return;
     int ch = m[0] & 15, vel = (m[0] & 0xF0) == 0x80 ? 0 : m[2];
-    const uint8_t *c = ch < 2 ? viz_matrix_palette[ch][vel] : (const uint8_t[3]){ 0, 0, 0 };
     uint8_t *d = g_disp[viz_grid_index(GRID_MATRIX, id)];
+    if (ch >= 2 && ch < 6) { memcpy(d, g_cpal[ch - 2][vel], 3); return; }
+    const uint8_t *c = ch < 2 ? viz_matrix_palette[ch][vel] : (const uint8_t[3]){ 0, 0, 0 };
     for (int k = 0; k < 3; k++) d[k] = c[k] >> 2;
 }
 
@@ -136,6 +148,8 @@ static void reset_display(int grid) {
     g_bad_msg = g_bad_cable = 0;
     g_max_block_pkts = g_total_pkts = 0;
     g_setups = 0;
+    memset(g_cpal, 0, sizeof g_cpal);
+    g_pal_msgs = 0;
 }
 
 /* ---- test audio ------------------------------------------------------- */
@@ -244,10 +258,24 @@ static void test_midi(void) {
 
 /* Move's own notes go out of USB-A to the Matrix as well. Viz covers each
  * one in the same transfer, then sends the light again exactly. */
+/* The mailbox the host hands every plugin: MIDI_OUT is its first 80 bytes.
+ * Move leaves its note in a later slot; a packet Viz queues lands in an
+ * earlier empty one (the fake host paints it at once), and then the region
+ * ships in slot order, as it did on the device. */
+static uint8_t g_mbox[256];
+
 static void move_note(void *v, uint8_t st, uint8_t note, uint8_t vel, int source) {
     uint8_t m[3] = { st, note, vel };
-    if (source == MOVE_MIDI_SOURCE_EXTERNAL) paint_note(m);   /* Move's packet comes first */
+    if (source != MOVE_MIDI_SOURCE_EXTERNAL) { move_audio_fx_on_midi(v, m, 3, source); return; }
+    memset(g_mbox, 0, 80);
+    uint8_t *slot = g_mbox + 4 * 12;
+    slot[0] = (uint8_t)(0x20 | (st >> 4)); slot[1] = st; slot[2] = note; slot[3] = vel;
     move_audio_fx_on_midi(v, m, 3, source);                   /* how the host calls a Master FX */
+    for (int j = 0; j < 80; j += 4) {                         /* the transfer */
+        int cin = g_mbox[j] & 15;
+        if ((g_mbox[j] >> 4) == 2 && (cin == 8 || cin == 9 || cin == 0xB)) paint_note(g_mbox + j + 1);
+    }
+    memset(g_mbox, 0, 80);
 }
 
 static uint8_t g_kept[4];
@@ -330,6 +358,36 @@ static void test_move_notes(void) {
         late += g_last_sent[ix] <= at;
     }
     CHECK(late == 0, "%d of 32 hit lights not sent again within 80 ms", late);
+
+    /* Lit, and hit again and again (a drum pattern): after its first hit a
+     * pad keeps exactly the colour it had, through its palette entry. */
+    {
+        api->set_param(v, "color", "Rainbow");
+        api->set_param(v, "size", "4");
+        run(v, &s, 0.5, 1, 1);
+        int exact = 0, total = 0, lit = 0;
+        for (int k = 0; k < 96; k++) {
+            /* eight pads across the grid; hit one that is lit now, if any */
+            static const uint8_t pads[8] = { 36, 43, 50, 57, 62, 69, 84, 99 };
+            uint8_t note = pads[k % 8];
+            for (int j = 0; j < 8; j++) {
+                uint8_t mj[3] = { 0x90, pads[(k + j) % 8], 1 };
+                uint8_t *dj = g_disp[viz_grid_index(GRID_MATRIX, viz_grid_painted(GRID_MATRIX, mj))];
+                if (dj[0] || dj[1] || dj[2]) { note = mj[1]; break; }
+            }
+            uint8_t m[3] = { 0x90, note, 1 };
+            int ix = viz_grid_index(GRID_MATRIX, viz_grid_painted(GRID_MATRIX, m));
+            uint8_t before[3];
+            memcpy(before, g_disp[ix], 3);
+            move_note(v, 0x90, note, 100, MOVE_MIDI_SOURCE_EXTERNAL);
+            if (k >= 12) { total++; exact += !memcmp(before, g_disp[ix], 3); lit += before[0] || before[1] || before[2]; }
+            run(v, &s, 0.0625, 1, 1);
+        }
+        printf("  lit pads: %d of %d drum hits (%d on lit pads) kept their exact colour, %ld palette writes\n", exact, total, lit, g_pal_msgs);
+        CHECK(lit * 2 >= total, "only %d of %d hits landed on lit pads", lit, total);
+        CHECK(exact * 10 >= total * 9, "only %d of %d hits on lit pads kept their colour", exact, total);
+        CHECK(g_pal_msgs > 0, "no palette writes");
+    }
     CHECK(g_bad_msg == 0, "covers broke %d SysEx messages", g_bad_msg);
 
     /* What doesn't reach the Matrix, or is Viz's own, draws no cover. */
@@ -340,7 +398,24 @@ static void test_move_notes(void) {
     CHECK(covers(v) == c0, "%ld covers for messages that never reach the Matrix", covers(v) - c0);
     g_note_pkts = 0;
     move_note(v, 0x90, 41, 100, MOVE_MIDI_SOURCE_EXTERNAL);
-    CHECK(covers(v) == c0 + 1 && g_note_pkts == 1, "one Move note, %ld covers", covers(v) - c0);
+    CHECK(covers(v) == c0 + 1 && g_note_pkts == 0, "one Move note, %ld covers, %ld queued", covers(v) - c0, g_note_pkts);
+
+    /* Without the mailbox, the queued cover lands ahead of Move's note: the
+     * model shows the device's failure. */
+    g_host.mapped_memory = NULL;
+    api->set_param(v, "light", "0");
+    run(v, &s, 0.5, 1, 1);
+    int ahead = 0;
+    for (int k = 0; k < 8; k++) {
+        uint8_t note = (uint8_t)(36 + k);
+        move_note(v, 0x90, note, 100, MOVE_MIDI_SOURCE_EXTERNAL);
+        uint8_t m[3] = { 0x90, note, 1 };
+        uint8_t *d = g_disp[viz_grid_index(GRID_MATRIX, viz_grid_painted(GRID_MATRIX, m))];
+        ahead += d[0] || d[1] || d[2];
+        run(v, &s, 0.1, 1, 1);
+    }
+    CHECK(ahead == 8, "the model should show a queued cover losing (%d of 8)", ahead);
+    g_host.mapped_memory = g_mbox;
     run(v, &s, 0.01, 1, 1);
     api->destroy_instance(v);
 
@@ -352,17 +427,29 @@ static void test_move_notes(void) {
         memset(&f, 0, sizeof f);
         viz_sender_frame(&snd, &f);
         uint8_t m[3] = { 0x90, 50, 100 };
-        viz_sender_midi(&snd, m, keep, NULL);
+        viz_sender_midi(&snd, m, NULL, keep, NULL);
         CHECK(snd.covers == 1, "a Move note drew %ld covers", snd.covers);
-        viz_sender_midi(&snd, g_kept + 1, keep, NULL);
+        viz_sender_midi(&snd, g_kept + 1, NULL, keep, NULL);
         CHECK(snd.covers == 1, "Viz's own cover, echoed, drew another");
         /* at most 4 covers a block (the first note's among them); the rest
          * wait for the re-send */
-        for (int k = 0; k < 10; k++) { uint8_t n[3] = { 0x91, (uint8_t)(60 + k), 9 }; viz_sender_midi(&snd, n, keep, NULL); }
+        for (int k = 0; k < 10; k++) { uint8_t n[3] = { 0x91, (uint8_t)(60 + k), 9 }; viz_sender_midi(&snd, n, NULL, keep, NULL); }
         CHECK(snd.covers == 4, "%ld covers in one block, not 4", snd.covers);
         int unknown = 0;
         for (int k = 0; k < 10; k++) { uint8_t n[3] = { 0x91, (uint8_t)(60 + k), 9 }; unknown += !snd.known[viz_grid_painted(GRID_MATRIX, n)]; }
         CHECK(unknown == 10, "only %d of a burst's 10 lights queued to be sent again", unknown);
+        /* Move's packet in the mailbox: replaced in place, nothing queued,
+         * the other slots untouched */
+        uint8_t mb[80] = { 0 };
+        uint8_t led[4] = { 0x09, 0x90, 70, 5 }, mv[4] = { 0x29, 0x92, 44, 77 };
+        memcpy(mb + 8, led, 4); memcpy(mb + 20, mv, 4);
+        long c = snd.covers;
+        memset(g_kept, 0, 4);
+        viz_sender_midi(&snd, mv + 1, mb, keep, NULL);
+        CHECK(snd.covers == c + 1 && snd.replaced == 1, "Move's packet not replaced");
+        CHECK(mb[20] == 0x29 && (mb[21] & 0xF0) == 0x90 && (mb[21] & 15) < 2 && mb[22] == 44, "the cover is a note on for note 44");
+        CHECK(!memcmp(mb + 8, led, 4), "a cable-0 packet was touched");
+        CHECK(g_kept[0] == 0, "a replaced cover was queued as well");
     }
 }
 
@@ -651,6 +738,8 @@ static void test_sequence(void) {
     p.step[2].scene = 1 + 1;                  /* Rings */
     p.step[2].color = 2 + 1;                  /* Fire */
     p.step[2].rate = 2 + 0;                   /* 4 bars */
+    p.step[0].size = p.step[0].fold = p.step[2].size = p.step[2].fold = OPT_SAME;
+    p.step[0].rate = OPT_SAME;
     static const struct { double beat; int step; } walk[] = {
         { 0, 0 }, { 3.9, 0 }, { 4.0, 2 }, { 5.9, 2 }, { 6.0, 0 }, { 9.99, 0 }, { 10.0, 2 }, { 13, 0 },
         { 1.0, 0 },                           /* Move restarted: back to step 1 */
@@ -812,8 +901,8 @@ static void test_controls(const char *dir) {
     /* defaults, as the user set them (2026-10-11) */
     void *d = make();
     const char *want[][2] = { { "play", "Off" }, { "s1_bars", "1 bar" }, { "s2_bars", "Off" }, { "s8_bars", "Off" },
-                              { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "Same" },
-                              { "s4_size", "Same" }, { "s4_fold", "Same" }, { "m1_depth", "0.00" } };
+                              { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "Random" },
+                              { "s4_size", "Random" }, { "s4_fold", "Four" }, { "m1_depth", "0.00" } };
     for (unsigned i = 0; i < sizeof want / sizeof want[0]; i++) {
         api->get_param(d, want[i][0], buf, sizeof buf);
         CHECK(!strcmp(buf, want[i][1]), "default %s is %s, not %s", want[i][0], buf, want[i][1]);
@@ -839,6 +928,7 @@ int main(int argc, char **argv) {
     g_host.frames_per_block = VIZ_BLOCK;
     g_host.log = fake_log;
     g_host.midi_send_external = fake_send;
+    g_host.mapped_memory = g_mbox;
     g_host.get_beat_position = fake_beat;
     g_host.get_bpm = fake_bpm;
     api = move_audio_fx_init_v2(&g_host);

@@ -55,6 +55,18 @@ typedef struct {
     int fl_n;
     int fl_fill;                /* the message is a fill: every present light takes fl_val[0] */
     double credit;
+    /* Move's notes: the lights they hit ("hot"), and the Matrix's custom
+     * palettes 1 and 2 (channels 3, 4). Entry id of one holds what hot light
+     * id shows, and the other is written with what it will show next, before
+     * the frame that changes it, so a cover can be exact */
+    uint8_t hot[NLIGHT];
+    uint8_t cur[NLIGHT][3];     /* what each light shows: frames, fills and covers (6-bit) */
+    uint8_t cur_known[NLIGHT];
+    int8_t nextb[NLIGHT];       /* the palette last written with a hot light's next colour, -1 none */
+    uint8_t pal[2][NLIGHT][3];
+    uint8_t pal_known[2][NLIGHT];
+    int fl_pal;                 /* the message in flight writes palette fl_pal - 1 */
+    int last_pal;
     /* covers: one-packet repaints sent the moment Move's own MIDI out paints a light */
     uint8_t cover[8][3];
     long cover_block[8];
@@ -65,7 +77,7 @@ typedef struct {
     long next_refresh, next_setup;
     int setup_due;
     /* counters, for tests and logs */
-    long sent, refused, msgs, covers;
+    long sent, refused, msgs, covers, cover_refused, painted, replaced;
 } viz_sender_t;
 
 void viz_sender_init(viz_sender_t *s, int grid);
@@ -80,11 +92,14 @@ void viz_sender_block(viz_sender_t *s, viz_send_fn send, void *ctx);
  * On, Note Off or CC on channels 1-6 through its drum-rack note map; a
  * Launchpad in Programmer mode: channels 1-3, the note is the index), or -1. */
 int viz_grid_painted(int grid, const uint8_t msg[3]);
-/* Move sent msg out of USB-A, and it reaches the grid as well. If it paints a
- * light, that light is sent again first thing; on the Matrix, a one-packet
- * cover goes out at once too, so it lands in the same USB transfer as Move's
- * note. Viz's own covers, coming back, are ignored. */
-void viz_sender_midi(viz_sender_t *s, const uint8_t msg[3], viz_send_fn send, void *ctx);
+/* Move is sending msg out of USB-A, and it reaches the grid as well. If it
+ * paints a light, that light is sent again first thing. On the Matrix a
+ * one-packet cover (the nearest palette colour, never brighter) takes the
+ * place of Move's packet in mbox, the MIDI_OUT region about to ship, so the
+ * Matrix never sees the note; when the packet isn't there (or mbox is NULL)
+ * the cover is sent instead, at most 4 a block. Viz's own sent covers, coming
+ * back, are ignored. */
+void viz_sender_midi(viz_sender_t *s, const uint8_t msg[3], uint8_t *mbox, viz_send_fn send, void *ctx);
 /* The two Matrix palettes (channel 1: Matrix, channel 2: Launchpad X), from
  * Matrix OS (MIT, 203 Systems), Applications/Performance/8x8/Performance8x8.h. */
 extern const uint8_t viz_matrix_palette[2][128][3];

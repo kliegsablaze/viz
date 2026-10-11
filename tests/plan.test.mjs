@@ -25,7 +25,7 @@ for (const p of chainParams) {
     check(drawn === p.short_name.toUpperCase(), `${p.key}: cell "${p.short_name}" draws as "${drawn}"`);
 }
 
-// Four pages: Look, Settings, Sequence, Mod. The Sequence page shows the
+// Four pages: Look, SEQ, MOD, Settings. The Sequence page shows the
 // chosen step's knobs only, through gates on STEP (the shadow UI's
 // comparison, compareConditionValue: an exact string match).
 const visibleFor = (values) => (cond) => {
@@ -44,9 +44,9 @@ for (let step = 1; step <= 8; step++) {
     const seq = ["step", `s${step}_scene`, `s${step}_bars`, "play", `s${step}_color`, `s${step}_rate`, `s${step}_size`, `s${step}_fold`];
     check(pages.length === 4, `step ${step}: 4 knob pages, got ${pages.length}: ${pages.map((p) => JSON.stringify(p.keys)).join(" ")}`);
     check(JSON.stringify(pages[0]?.keys) === JSON.stringify(look), `page 1 is ${JSON.stringify(pages[0]?.keys)}`);
-    check(JSON.stringify(pages[1]?.keys) === JSON.stringify(settings), `page 2 is ${JSON.stringify(pages[1]?.keys)}`);
-    check(JSON.stringify(pages[2]?.keys) === JSON.stringify(seq), `step ${step}: page 3 is ${JSON.stringify(pages[2]?.keys)}`);
-    check(JSON.stringify(pages[3]?.keys) === JSON.stringify(modKeys), `page 4 is ${JSON.stringify(pages[3]?.keys)}`);
+    check(JSON.stringify(pages[1]?.keys) === JSON.stringify(seq), `step ${step}: page 2 is ${JSON.stringify(pages[1]?.keys)}`);
+    check(JSON.stringify(pages[2]?.keys) === JSON.stringify(modKeys), `page 3 is ${JSON.stringify(pages[2]?.keys)}`);
+    check(JSON.stringify(pages[3]?.keys) === JSON.stringify(settings), `page 4 is ${JSON.stringify(pages[3]?.keys)}`);
 }
 // Every gate names a real STEP option, and the pictures ask for at most four extra keys.
 const stepOpts = chainParams.find((p) => p.key === "step")?.options || [];

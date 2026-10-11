@@ -42,8 +42,8 @@ void viz_seq_defaults(viz_seq_params_t *p) {
         viz_seq_step_t *st = &p->step[i];
         st->scene = OPT_RANDOM;
         st->bars = i == 0 ? 4 : BARS_OFF;          /* step 1: one bar */
-        st->color = OPT_RANDOM;
-        st->rate = st->size = st->fold = OPT_SAME;
+        st->color = st->rate = st->size = OPT_RANDOM;
+        st->fold = 2 + 3;                           /* Four */
     }
     p->mod[0] = (viz_mod_t){ MOD_SINE, 4, AIM_COLOR, 0 };
     p->mod[1] = (viz_mod_t){ MOD_KICK, 2, AIM_SIZE, 0 };

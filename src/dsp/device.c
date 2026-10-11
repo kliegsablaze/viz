@@ -12,8 +12,8 @@
  *
  * Move's own MIDI out goes to the grid too, and the Matrix paints any note on
  * channels 1-6. Viz hears those notes as they leave (a Master FX gets them in
- * on_midi, in the same block), so it covers each one at once and re-sends the
- * light (viz_sender_midi).
+ * on_midi, while they still wait in the MIDI_OUT region), so it puts a cover in
+ * place of each one and re-sends the light (viz_sender_midi).
  */
 #include <math.h>
 #include <stdlib.h>
@@ -74,6 +74,7 @@ void viz_sender_init(viz_sender_t *s, int grid) {
     s->grid = grid >= 0 && grid < GRID_COUNT ? grid : 0;
     s->pending_grid = -1;
     s->setup_due = 1;
+    memset(s->nextb, -1, sizeof s->nextb);
 }
 
 static void quantise(viz_sender_t *s) {
@@ -87,6 +88,10 @@ static void switch_grid(viz_sender_t *s, int grid) {
     s->pending_grid = -1;
     quantise(s);                 /* the new grid may have other bits per channel */
     memset(s->known, 0, sizeof s->known);
+    memset(s->cur_known, 0, sizeof s->cur_known);
+    memset(s->hot, 0, sizeof s->hot);
+    memset(s->nextb, -1, sizeof s->nextb);
+    memset(s->pal_known, 0, sizeof s->pal_known);
     s->setup_due = 1;
 }
 
@@ -112,6 +117,7 @@ static void begin(viz_sender_t *s, const viz_grid_t *g) {
     s->msg_pos = 0;
     s->fl_n = 0;
     s->fl_fill = 0;
+    s->fl_pal = 0;
 }
 
 static int build_setup(viz_sender_t *s) {
@@ -126,6 +132,21 @@ static int build_setup(viz_sender_t *s) {
 
 static int same3(const uint8_t *a, const uint8_t *b) { return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]; }
 
+static int pal_has(const viz_sender_t *s, int b, int id, const uint8_t *c) {
+    return s->pal_known[b][id] && same3(s->pal[b][id], c);
+}
+
+/* The colour a frame sends a light. A hot light on the Matrix takes a new
+ * colour only once a palette entry holds it, so a cover can always be exact:
+ * until then it gets the next colour already written (a few ms behind). */
+static const uint8_t *target(const viz_sender_t *s, int id) {
+    if (s->grid != GRID_MATRIX || !s->hot[id]) return s->want[id];
+    if (pal_has(s, 0, id, s->want[id]) || pal_has(s, 1, id, s->want[id])) return s->want[id];
+    int b = s->nextb[id];
+    if (b >= 0 && s->pal_known[b][id]) return s->pal[b][id];
+    return s->want[id];
+}
+
 static int build_frame(viz_sender_t *s) {
     const viz_grid_t *g = &viz_grids[s->grid];
     int ids[NLIGHT], w[NLIGHT], n = 0, present = 0;
@@ -134,8 +155,10 @@ static int build_frame(viz_sender_t *s) {
         present++;
         int d;
         if (!s->known[id]) d = 10000;
-        else d = abs(s->want[id][0] - s->shown[id][0]) + abs(s->want[id][1] - s->shown[id][1]) +
-                 abs(s->want[id][2] - s->shown[id][2]);
+        else {
+            const uint8_t *t = target(s, id);
+            d = abs(t[0] - s->shown[id][0]) + abs(t[1] - s->shown[id][1]) + abs(t[2] - s->shown[id][2]);
+        }
         if (d > 0) { ids[n] = id; w[n] = d; n++; }
     }
     if (!n) return 0;
@@ -197,30 +220,81 @@ static int build_frame(viz_sender_t *s) {
         int id = ids[i];
         if (g->spec) s->msg[s->msg_len++] = 0x03;
         s->msg[s->msg_len++] = viz_grid_index(s->grid, id);
-        memcpy(s->msg + s->msg_len, s->want[id], 3);
+        memcpy(s->msg + s->msg_len, target(s, id), 3);
         s->msg_len += 3;
         s->fl_id[i] = (uint8_t)id;
-        memcpy(s->fl_val[i], s->want[id], 3);
+        memcpy(s->fl_val[i], target(s, id), 3);
     }
     s->fl_n = n;
     s->msg[s->msg_len++] = 0xF7;
     return 1;
 }
 
+/* Keep two entries for each hot light in custom palettes 1 and 2: what it
+ * shows now, and what it will show next, written before the frame that
+ * changes it. The Matrix's own "41 3D <palette> (idx r g b)" write, to RAM
+ * only: Viz never sends the 41 7D that saves palettes to flash. One message
+ * writes one palette. */
+static int build_palette(viz_sender_t *s) {
+    if (s->grid != GRID_MATRIX) return 0;
+    const viz_grid_t *g = &viz_grids[s->grid];
+    for (int b = 0; b < 2; b++) {
+        int n = 0;
+        for (int id = 0; id < NLIGHT && n < 16; id++) {
+            if (!s->hot[id] || !s->cur_known[id]) continue;
+            const uint8_t *now = s->cur[id], *next = s->want[id], *c;
+            int in0 = pal_has(s, 0, id, now), in1 = pal_has(s, 1, id, now), slot;
+            if (!in0 && !in1) { c = now; slot = pal_has(s, 0, id, next) ? 1 : 0; }
+            else if (!pal_has(s, 0, id, next) && !pal_has(s, 1, id, next)) { c = next; slot = in0 ? 1 : 0; }
+            else if (s->nextb[id] < 0 || !pal_has(s, s->nextb[id], id, next)) { s->nextb[id] = (int8_t)(pal_has(s, 0, id, next) ? 0 : 1); continue; }
+            else continue;
+            if (slot != b) continue;
+            if (!n) { begin(s, g); s->msg[s->msg_len++] = 0x41; s->msg[s->msg_len++] = 0x3D; s->msg[s->msg_len++] = (uint8_t)b; }
+            s->msg[s->msg_len++] = (uint8_t)id;
+            memcpy(s->msg + s->msg_len, c, 3);
+            s->msg_len += 3;
+            s->fl_id[n] = (uint8_t)id;
+            memcpy(s->fl_val[n], c, 3);
+            n++;
+        }
+        if (n) {
+            for (int i = 0; i < n; i++)
+                if (same3(s->fl_val[i], s->want[s->fl_id[i]]))     /* written as the next colour */
+                    s->nextb[s->fl_id[i]] = (int8_t)b;
+            s->fl_n = n;
+            s->fl_pal = 1 + b;
+            s->msg[s->msg_len++] = 0xF7;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void commit(viz_sender_t *s) {
-    if (s->fl_fill) {
+    if (s->fl_pal) {
+        for (int i = 0; i < s->fl_n; i++) {
+            memcpy(s->pal[s->fl_pal - 1][s->fl_id[i]], s->fl_val[i], 3);
+            s->pal_known[s->fl_pal - 1][s->fl_id[i]] = 1;
+        }
+    } else if (s->fl_fill) {
         for (int id = 0; id < NLIGHT; id++)
-            if (viz_grid_index(s->grid, id)) { memcpy(s->shown[id], s->fl_val[0], 3); s->known[id] = 1; }
+            if (viz_grid_index(s->grid, id)) {
+                memcpy(s->shown[id], s->fl_val[0], 3); s->known[id] = 1;
+                memcpy(s->cur[id], s->fl_val[0], 3); s->cur_known[id] = 1;
+            }
     } else {
         for (int i = 0; i < s->fl_n; i++) {
             memcpy(s->shown[s->fl_id[i]], s->fl_val[i], 3);
             s->known[s->fl_id[i]] = 1;
+            memcpy(s->cur[s->fl_id[i]], s->fl_val[i], 3);
+            s->cur_known[s->fl_id[i]] = 1;
         }
     }
     s->msgs++;
     s->msg_len = s->msg_pos = 0;
     s->fl_n = 0;
     s->fl_fill = 0;
+    s->fl_pal = 0;
 }
 
 void viz_sender_block(viz_sender_t *s, viz_send_fn send, void *ctx) {
@@ -229,7 +303,11 @@ void viz_sender_block(viz_sender_t *s, viz_send_fn send, void *ctx) {
      * Launchpad is told its mode again every 2 s, in case it was replugged. */
     long half = (long)(0.5 * VIZ_SR / VIZ_BLOCK);
     if (s->blocks >= s->next_refresh) {
-        for (int k = 0; k < NLIGHT / 4; k++) s->known[(s->refresh_cursor + k) % NLIGHT] = 0;
+        for (int k = 0; k < NLIGHT / 4; k++) {
+            s->known[(s->refresh_cursor + k) % NLIGHT] = 0;
+            s->pal_known[0][(s->refresh_cursor + k) % NLIGHT] = 0;   /* a replug forgets them too */
+            s->pal_known[1][(s->refresh_cursor + k) % NLIGHT] = 0;
+        }
         s->refresh_cursor = (s->refresh_cursor + NLIGHT / 4) % NLIGHT;
         s->next_refresh = s->blocks + half;
     }
@@ -250,7 +328,11 @@ void viz_sender_block(viz_sender_t *s, viz_send_fn send, void *ctx) {
             if (s->pending_grid >= 0) switch_grid(s, s->pending_grid);
             int ok = 0;
             if (s->setup_due) { s->setup_due = 0; ok = build_setup(s); }
-            if (!ok) ok = build_frame(s);
+            /* palette writes go ahead of the frame that needs them, but
+             * never twice running while a frame waits */
+            if (!ok && !s->last_pal && (ok = build_palette(s))) s->last_pal = 1;
+            if (!ok && (ok = build_frame(s))) s->last_pal = 0;
+            if (!ok) ok = build_palette(s);
             if (!ok) break;
         }
         int rem = s->msg_len - s->msg_pos;
@@ -344,22 +426,53 @@ void viz_matrix_nearest(const uint8_t c[3], int *channel, int *velocity) {
 #define COVERS_PER_BLOCK 4
 #define COVER_ECHO_BLOCKS 16
 
-void viz_sender_midi(viz_sender_t *s, const uint8_t msg[3], viz_send_fn send, void *ctx) {
+/* Move's own packet for msg, still waiting in the MIDI_OUT region. */
+static uint8_t *find_in_mailbox(uint8_t *mbox, const uint8_t msg[3]) {
+    if (!mbox) return NULL;
+    for (int j = 0; j < 80; j += 4)
+        if ((mbox[j] >> 4) == 2 && mbox[j + 1] == msg[0] && mbox[j + 2] == msg[1] && mbox[j + 3] == msg[2])
+            return mbox + j;
+    return NULL;
+}
+
+void viz_sender_midi(viz_sender_t *s, const uint8_t msg[3], uint8_t *mbox, viz_send_fn send, void *ctx) {
     for (int i = 0; i < 8; i++)
         if (s->cover_block[i] && s->blocks - s->cover_block[i] <= COVER_ECHO_BLOCKS &&
             !memcmp(s->cover[i], msg, 3)) return;          /* our own cover, echoed */
     int id = viz_grid_painted(s->grid, msg);
     if (id < 0 || !viz_grid_index(s->grid, id)) return;
-    s->known[id] = 0;                                       /* sent again, first */
-    if (s->grid != GRID_MATRIX) return;
-    if (s->covers_block != s->blocks) { s->covers_block = s->blocks; s->covers_this_block = 0; }
-    if (s->covers_this_block >= COVERS_PER_BLOCK) return;
+    s->painted++;
+    if (s->grid != GRID_MATRIX) { s->known[id] = 0; return; }
+    /* The colour the light had: a palette entry holding it exactly, else
+     * the nearest built-in colour (never brighter). */
+    const uint8_t *now = s->cur_known[id] ? s->cur[id] : s->want[id];
     int ch, vel;
-    viz_matrix_nearest(s->frame[id], &ch, &vel);
+    uint8_t got[3];
+    if (pal_has(s, 0, id, now) || pal_has(s, 1, id, now)) {
+        ch = pal_has(s, 0, id, now) ? 2 : 3;
+        vel = id;
+        memcpy(got, now, 3);
+    } else {
+        uint8_t t[3];
+        for (int k = 0; k < 3; k++) t[k] = (uint8_t)((now[k] << 2) | (now[k] >> 4));
+        viz_matrix_nearest(t, &ch, &vel);
+        for (int k = 0; k < 3; k++) got[k] = viz_matrix_palette[ch][vel][k] >> 2;
+    }
+    s->hot[id] = 1;
+    s->known[id] = 0;                                       /* sent again, first */
     /* a note on of the light's own note: one packet, which the Matrix reads
      * on its own even between the packets of a SysEx message */
     uint8_t p[4] = { 0x29, (uint8_t)(0x90 | ch), msg[1], (uint8_t)vel };
-    if (!send(ctx, p)) return;
+    /* Best: take the place of Move's packet, so the Matrix never sees it.
+     * Queued instead, the cover can land in an earlier empty slot of the
+     * same transfer, and Move's note then paints over it (measured). */
+    uint8_t *slot = find_in_mailbox(mbox, msg);
+    if (slot) { memcpy(slot, p, 4); s->replaced++; s->covers++; memcpy(s->cur[id], got, 3); s->cur_known[id] = 1; return; }
+    if (s->covers_block != s->blocks) { s->covers_block = s->blocks; s->covers_this_block = 0; }
+    if (s->covers_this_block >= COVERS_PER_BLOCK) return;
+    if (!send(ctx, p)) { s->cover_refused++; return; }
+    memcpy(s->cur[id], got, 3);
+    s->cur_known[id] = 1;
     memcpy(s->cover[s->cover_next], p + 1, 3);
     s->cover_block[s->cover_next] = s->blocks ? s->blocks : 1;
     s->cover_next = (s->cover_next + 1) % 8;
