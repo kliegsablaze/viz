@@ -444,6 +444,10 @@ static void sb(sb_t *b, const char *fmt, ...) {
     b->pos += vsnprintf(b->buf + b->pos, b->len - b->pos, fmt, ap);
     va_end(ap);
 }
+/* Two spaces after a page name: Schwung's automation mark (a 7x7 square at
+ * the header's right edge) then lands on blank space instead of the name's
+ * last letter. Schwung keeps the spaces; the root page is always "Main". */
+#define PAGE(name) name "  "
 static void level(sb_t *b, const char *name, const char *label, const int *keys, int n, int links) {
     sb(b, "\"%s\":{\"label\":\"%s\",\"knobs\":[", name, label);
     for (int i = 0; i < n; i++) sb(b, "%s\"%s\"", i ? "," : "", k_params[keys[i]].key);
@@ -456,8 +460,8 @@ static void level(sb_t *b, const char *name, const char *label, const int *keys,
         sb(b, "}");
     }
     if (links)
-        sb(b, ",{\"level\":\"sequence\",\"label\":\"SEQ\"},{\"level\":\"mod\",\"label\":\"MOD\"},"
-              "{\"level\":\"settings\",\"label\":\"Settings\"}");
+        sb(b, ",{\"level\":\"sequence\",\"label\":\"" PAGE("SEQ") "\"},{\"level\":\"mod\",\"label\":\"" PAGE("MOD") "\"},"
+              "{\"level\":\"settings\",\"label\":\"" PAGE("Settings") "\"}");
     sb(b, "]}");
 }
 
@@ -478,11 +482,11 @@ static int ui_hierarchy(char *buf, int len) {
     sb(&b, "{\"modes\":null,\"levels\":{");
     level(&b, "root", "Viz", look, 8, 1);
     sb(&b, ",");
-    level(&b, "sequence", "SEQ", seq, n, 0);
+    level(&b, "sequence", PAGE("SEQ"), seq, n, 0);
     sb(&b, ",");
-    level(&b, "mod", "MOD", mod, SEQ_MODS * MF_COUNT, 0);
+    level(&b, "mod", PAGE("MOD"), mod, SEQ_MODS * MF_COUNT, 0);
     sb(&b, ",");
-    level(&b, "settings", "Settings", set, 8, 0);
+    level(&b, "settings", PAGE("Settings"), set, 8, 0);
     sb(&b, "}}");
     return b.pos < len ? b.pos : -1;
 }

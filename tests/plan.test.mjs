@@ -9,7 +9,7 @@ const [dir, schwung] = process.argv.slice(2);
 const load = (rel) => import(pathToFileURL(path.join(schwung, "src/shared/param_pages", rel)));
 const { planPages } = await load("page_plan.mjs");
 const { validateContract } = await load("validate_contract.mjs");
-const { labelVerbatim } = await load("render_page_movy.mjs");
+const { labelVerbatim, drawHeader } = await load("render_page_movy.mjs");
 
 const hierarchy = JSON.parse(fs.readFileSync(path.join(dir, "ui_hierarchy.json"), "utf8"));
 const chainParams = JSON.parse(fs.readFileSync(path.join(dir, "chain_params.json"), "utf8"));
@@ -47,6 +47,16 @@ for (let step = 1; step <= 8; step++) {
     check(JSON.stringify(pages[1]?.keys) === JSON.stringify(seq), `step ${step}: page 2 is ${JSON.stringify(pages[1]?.keys)}`);
     check(JSON.stringify(pages[2]?.keys) === JSON.stringify(modKeys), `page 3 is ${JSON.stringify(pages[2]?.keys)}`);
     check(JSON.stringify(pages[3]?.keys) === JSON.stringify(settings), `page 4 is ${JSON.stringify(pages[3]?.keys)}`);
+}
+// Schwung's automation mark clears x 121..127 of the header (shadow_ui.js
+// drawPlockMark); every page name but the host's own "Main" ends left of it.
+{
+    const pages = planPages({ hierarchy, chainParams, visible: visibleFor({ step: "1" }) }).pages.filter((p) => Array.isArray(p.keys));
+    for (const pg of pages.slice(1)) {
+        let right = 0;
+        drawHeader({ fillRect: (x, y, w, h, c) => { if (c && w < 128) right = Math.max(right, x + w - 1); } }, "", pg.name);
+        check(right > 100 && right < 121, `page "${pg.name}" ends at x ${right}, clear of the mark`);
+    }
 }
 // Every gate names a real STEP option, and the pictures ask for at most four extra keys.
 const stepOpts = chainParams.find((p) => p.key === "step")?.options || [];
