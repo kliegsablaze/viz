@@ -245,10 +245,6 @@ const SCENES = [
   { name: "Sweep", uses: "RATE SIZE", desc: "A bar sweeps back and forth, one pad per step. It turns sideways every other pass.",
     draw(g, c) { const p = tri(c.step, 8 - c.s), vert = Math.floor(c.step / (2 * (8 - c.s))) % 2;
       each((x, y) => { const v = vert ? y : x; if (v >= p && v < p + c.s) g.set(x, y, Math.floor(c.step / (8 - c.s)) % 2, 1); }); } },
-  { name: "Chevron", uses: "RATE SIZE", desc: "Arrow shapes march upward, one row per step.",
-    draw(g, c) { const P = c.s + 2;
-      each((x, y) => { const v = y + Math.floor(Math.abs(x - C)) + c.step, m = ((v % P) + P) % P;
-        if (m < c.s) g.set(x, y, Math.floor(v / P) % 3, 1); }); } },
   { name: "Cross", uses: "RATE SIZE", desc: "A plus sign and an X take turns, one per step.",
     draw(g, c) { const s = Math.min(c.s, 3), plus = c.step % 2 === 0;
       each((x, y) => { const on = plus ? (Math.abs(x - C) <= s - .5 || Math.abs(y - C) <= s - .5)
@@ -264,8 +260,6 @@ const SCENES = [
     draw(g, c) { const a = (c.step + c.f) * Math.PI / 2;
       each((x, y) => { const ang = Math.atan2(y - C, x - C); let d = (a - ang) % (2 * Math.PI); if (d < 0) d += 2 * Math.PI;
         if (d < .35 * c.s) g.set(x, y, Math.floor((c.step) / 4) % 2, 1 - d / (.35 * c.s) * .6); }); } },
-  { name: "Checker", uses: "RATE SIZE", desc: "A checkerboard flips on every step. SIZE sets the size of the squares.",
-    draw(g, c) { each((x, y) => { if ((Math.floor(x / c.s) + Math.floor(y / c.s) + c.step) % 2 === 0) g.set(x, y, Math.floor(c.step / 2) % 2, 1); }); } },
   { name: "Stripes", uses: "RATE SIZE", desc: "Diagonal stripes slide across, one pad per step, like a barber's pole.",
     draw(g, c) { each((x, y) => { const v = x + y + c.step, P = 2 * c.s; if (v % P < c.s) g.set(x, y, Math.floor(v / P) % 2, 1); }); } },
   { name: "Tunnel", uses: "RATE SIZE", desc: "Nested squares zoom outward, one ring per step. SIZE spaces the rings.",
@@ -320,17 +314,116 @@ const SCENES = [
     draw(g, c) { const w = c.s === 3 ? 4 : c.s === 4 ? 8 : c.s, n = 8 / w;
       for (let i = 0; i < n; i++) { let v = 0; for (let k = i * w; k < (i + 1) * w; k++) v = Math.max(v, feat.bands[k]);
         const h = v * 4; for (let x = i * w; x < (i + 1) * w; x++) for (let y = 0; y < 8; y++) { const d = Math.abs(y - C) + .5; if (d <= h + .3) g.set(x, y, d < 2 ? 2 : d < 3 ? 1 : 0, 1); } } } },
-  { name: "Life", uses: "RATE SIZE", desc: "The Game of Life, one generation per step. Kicks drop new SIZE-sized seeds.",
-    init(st) { st.r = rng(9); st.a = new Uint8Array(64); st.age = new Uint8Array(64); st.last = -1; for (let i = 0; i < 64; i++) st.a[i] = st.r() < .3; },
+  { name: "Spiral", uses: "RATE SIZE", desc: "Two spiral arms turn round the centre, a quarter turn per step. SIZE thickens the arms.",
+    draw(g, c) { const ph = (c.step + c.f) / 4;
+      each((x, y) => { const u = Math.atan2(y - C, x - C) / (2 * Math.PI) + Math.hypot(x - C, y - C) * .14 - ph, v = u * 2, fr = ((v % 1) + 1) % 1;
+        if (fr < .12 + c.s * .1) g.set(x, y, ((Math.floor(v) % 2) + 2) % 2, 1); }); } },
+  { name: "Pinwheel", uses: "RATE SIZE", desc: "Coloured blades click round one notch per step. SIZE sets how many blades.",
+    draw(g, c) { const n = c.s + 1, a = c.step * Math.PI / 8;
+      each((x, y) => { let u = (Math.atan2(y - C, x - C) - a) / (2 * Math.PI); u = ((u % 1) + 1) % 1; const k = Math.floor(u * 2 * n);
+        if (k % 2 === 0) g.set(x, y, (k / 2) % 3, 1); }); } },
+  { name: "Zigzag", uses: "RATE SIZE", desc: "Zigzag lines slide sideways, one pad per step.",
+    draw(g, c) { const t = Math.min(c.s, 3);
+      each((x, y) => { const z = tri(x + c.step, 3), d = y - z, m = ((d % 4) + 4) % 4;
+        if (m < t) g.set(x, y, ((Math.floor(d / 4) % 2) + 2) % 2, 1); }); } },
+  { name: "Fill", uses: "RATE SIZE", desc: "Pads switch on in a scattered order, SIZE x 4 per step, until the grid is full; then it flashes and starts again.",
+    draw(g, c) { const n = 4 * c.s, L = Math.ceil(64 / n) + 1, cyc = Math.floor(c.step / L), k = c.step % L;
+      const r = rng(cyc * 7919 + 13), perm = [...Array(64).keys()];
+      for (let i = 63; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
+      if (k === L - 1) { each((x, y) => g.set(x, y, 2, 1 - c.f)); return; }
+      for (let i = 0; i < Math.min(64, (k + 1) * n); i++) g.set(perm[i] % 8, perm[i] >> 3, cyc % 2, 1); } },
+  { name: "Kit", uses: "SIZE", desc: "Each drum has its own shape: the kick a centre square, the snare the four corners, the hi-hat the outer ring.",
+    draw(g, c) { const r = .5 + c.s * .75;
+      each((x, y) => { const d = cheb(x, y);
+        if (d < r) g.set(x, y, 0, feat.kick);
+        if (Math.abs(x - C) > 2 && Math.abs(y - C) > 2) g.set(x, y, 1, feat.snare);
+        else if (d > 3) g.set(x, y, 2, feat.hat * .9); }); } },
+  { name: "Icons", uses: "RATE", desc: "A picture on every step: heart, smiley, invader, note, star.",
+    draw(g, c) { const icons = [
+      [".##..##.", "########", "########", "########", ".######.", "..####..", "...##...", "........"],
+      ["..####..", ".#....#.", "#.#..#.#", "#......#", "#.#..#.#", "#..##..#", ".#....#.", "..####.."],
+      ["..#..#..", "#..##..#", "#.####.#", "###..###", "########", ".######.", ".#....#.", "#......#"],
+      ["....###.", "....#.##", "....#...", "....#...", "..###...", ".####...", ".####...", "..##...."],
+      ["...##...", "...##...", "########", ".######.", "..####..", ".######.", ".##..##.", "##....##"]];
+      const k = c.step % icons.length, ic = icons[k];
+      each((x, y) => { if (ic[y][x] === "#") g.set(x, y, k % 3, 1); }); } },
+  { name: "Count", uses: "RATE", desc: "Counts the steps out loud: big numbers 1 to 8.",
+    draw(g, c) { const D = {
+      1: ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."], 2: [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
+      3: ["####.", "....#", "....#", ".###.", "....#", "....#", "####."], 4: ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
+      5: ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."], 6: [".###.", "#....", "#....", "####.", "#...#", "#...#", ".###."],
+      7: ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."], 8: [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."] };
+      const n = (c.step % 8) + 1, d = D[n];
+      for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) if (d[y][x] === "#") g.set(x + 2, y + 1, n === 1 ? 2 : (n - 1) % 2, 1); } },
+  { name: "Arrow", uses: "RATE", desc: "A big arrow flies across the grid. It points a new way (up, right, down, left) on every step.",
+    draw(g, c) { const A = ["...##...", "..####..", ".######.", "########", "...##...", "...##...", "...##...", "...##..."];
+      const d = c.step % 4, sh = Math.floor(c.f * 8);
+      each((x, y) => { let [u, v] = d === 0 ? [x, y] : d === 1 ? [y, 7 - x] : d === 2 ? [7 - x, 7 - y] : [7 - y, x];
+        v = (v + sh) % 8; if (A[v][u] === "#") g.set(x, y, d % 2, 1); }); } },
+  { name: "Corners", uses: "RATE SIZE", desc: "Light runs in from all four corners and meets in the middle on every step.",
+    draw(g, c) { const p = Math.floor(c.f * 4), ring = 3 - p;
+      each((x, y) => { const dx = Math.abs(x - C), dy = Math.abs(y - C);
+        if (Math.floor(cheb(x, y)) === ring && Math.abs(dx - dy) < c.s) g.set(x, y, c.step % 3, 1); }); } },
+  { name: "Laser", uses: "RATE SIZE", desc: "A straight beam slashes across at a new angle on every step and every kick.",
+    init(st) { st.r = rng(21); st.l = []; st.last = -1; },
+    draw(g, c, st) { const add = () => { const a = st.r() * Math.PI; st.l.push({ a, px: 2 + st.r() * 4, py: 2 + st.r() * 4, ci: Math.floor(st.r() * 3), t: c.time }); };
+      if (c.step !== st.last) { st.last = c.step; add(); } if (c.kick) add();
+      st.l = st.l.filter((l) => c.time - l.t < .2);
+      for (const l of st.l) each((x, y) => { const d = Math.abs((x + .5 - l.px) * Math.sin(l.a) - (y + .5 - l.py) * Math.cos(l.a));
+        if (d < .3 + c.s * .25) g.set(x, y, l.ci, 1); }); } },
+  { name: "Stack", uses: "RATE SIZE", desc: "Blocks drop and stack up like Tetris, one per step. Full rows clear; when it reaches the top, the grid flashes and empties.",
+    init(st) { st.r = rng(31); st.occ = new Int8Array(64).fill(-1); st.b = null; st.last = -1; st.flash = -9; },
     draw(g, c, st) {
-      if (c.step !== st.last) { st.last = c.step; const nb = new Uint8Array(64);
-        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { let n = 0;
-          for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (i || j) n += st.a[((y + j + 8) % 8) * 8 + (x + i + 8) % 8];
-          const k = y * 8 + x; nb[k] = n === 3 || (n === 2 && st.a[k]); st.age[k] = nb[k] ? (st.a[k] ? Math.min(st.age[k] + 1, 9) : 0) : 0; }
-        st.a = nb; let pop = 0; for (const v of st.a) pop += v; if (pop < 5) for (let i = 0; i < 64; i++) st.a[i] = st.r() < .3; }
-      if (c.kick) { const s = Math.max(2, c.s), ox = Math.floor(st.r() * (9 - s)), oy = Math.floor(st.r() * (9 - s));
-        for (let y = oy; y < oy + s; y++) for (let x = ox; x < ox + s; x++) if (st.r() < .6) { st.a[y * 8 + x] = 1; st.age[y * 8 + x] = 0; } }
-      each((x, y) => { const k = y * 8 + x; if (st.a[k]) g.set(x, y, st.age[k] === 0 ? 2 : st.age[k] < 3 ? 1 : 0, 1); }); } },
+      const land = (x0, w) => { let y = 0; while (y + 1 < 8 && [...Array(w).keys()].every((i) => st.occ[(y + 1) * 8 + x0 + i] < 0)) y++; return y; };
+      if (c.step !== st.last) { st.last = c.step;
+        if (st.b) { for (let i = 0; i < st.b.w; i++) st.occ[st.b.y * 8 + st.b.x + i] = st.b.ci;
+          for (let y = 7; y >= 0; y--) { let full = true; for (let x = 0; x < 8; x++) if (st.occ[y * 8 + x] < 0) full = false;
+            if (full) { for (let yy = y; yy > 0; yy--) for (let x = 0; x < 8; x++) st.occ[yy * 8 + x] = st.occ[(yy - 1) * 8 + x];
+              for (let x = 0; x < 8; x++) st.occ[x] = -1; y++; } } }
+        const w = Math.min(c.s + 1, 4), x = Math.floor(st.r() * (9 - w)), y = land(x, w);
+        if (st.occ[x] >= 0 || y === 0) { st.occ.fill(-1); st.flash = c.time; st.b = null; }
+        else st.b = { x, w, y, ci: Math.floor(st.r() * 3) }; }
+      if (c.time - st.flash < .3) each((x, y) => g.set(x, y, 2, 1 - (c.time - st.flash) / .3));
+      each((x, y) => { const v = st.occ[y * 8 + x]; if (v >= 0) g.set(x, y, v, .8); });
+      if (st.b) { const y = Math.min(st.b.y, Math.floor(c.f * 2.5 * (st.b.y + 1))); for (let i = 0; i < st.b.w; i++) g.set(st.b.x + i, y, st.b.ci, 1); } } },
+  { name: "Rocket", uses: "RATE SIZE", desc: "A rocket shoots up and bursts into a ring, once per step. SIZE makes the burst bigger.",
+    draw(g, c) { const r = rng(c.step * 2654435761 + 1); const x = 1 + Math.floor(r() * 6), ty = 1 + Math.floor(r() * 3), ci = c.step % 3;
+      if (c.f < .45) { const y = 7 - Math.floor((7 - ty) * c.f / .45); g.set(x, y, 2, 1); g.set(x, y + 1, 2, .4); }
+      else { const R = (c.f - .45) / .55 * (1.5 + c.s);
+        each((px, py) => { const d = Math.hypot(px - x, py - ty); if (Math.abs(d - R) < .6) g.set(px, py, ci, 1 - (c.f - .45) * .8); }); } } },
+  { name: "Star", uses: "SIZE", desc: "Eight arms shoot out from the centre; each arm's length is one frequency band. SIZE widens them.",
+    draw(g, c) { each((x, y) => { const ang = Math.atan2(y - C, x - C), k = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
+      const diff = Math.abs(ang - Math.round(ang / (Math.PI / 4)) * Math.PI / 4), r = cheb(x, y);
+      if (diff < .2 + c.s * .12 && r < feat.bands[k] * 4 + .6) g.set(x, y, r < 1.5 ? 2 : r < 2.5 ? 1 : 0, 1); }); } },
+  { name: "Halves", uses: "RATE SIZE", desc: "The grid is cut into SIZE + 1 bands that light one after another. The cut turns sideways each round.",
+    draw(g, c) { const n = c.s + 1, k = c.step % n, vert = Math.floor(c.step / n) % 2;
+      each((x, y) => { const v = vert ? y : x; if (Math.floor(v * n / 8) === k) g.set(x, y, k % 3, 1); }); } },
+  { name: "Bricks", uses: "RATE SIZE", desc: "Rows of bricks slide in opposite directions, one pad per step. SIZE sets the brick length.",
+    draw(g, c) { const L = c.s + 1, P = L + 1;
+      each((x, y) => { const v = x + (y % 2 ? c.step : -c.step) + y * 2, m = ((v % P) + P) % P;
+        if (m < L) g.set(x, y, ((Math.floor(v / P) % 2) + 2) % 2 + (y % 2), 1); }); } },
+  { name: "Pong", uses: "RATE SIZE", desc: "A game of Pong: the ball moves four pads per step and the paddles chase it. SIZE sets the paddle length.",
+    draw(g, c) { const n = Math.floor((c.step + c.f) * 4), bx = 1 + tri(n, 5), by = tri(n + 3, 7), L = c.s + 1;
+      const py = Math.max(0, Math.min(8 - L, by - Math.floor(L / 2)));
+      for (let i = 0; i < L; i++) { g.set(0, py + i, 0, 1); g.set(7, py + i, 1, 1); }
+      g.set(bx, by, 2, 1); } },
+  { name: "Tiles", uses: "RATE SIZE", desc: "A mosaic of tiles that change colour on every step. SIZE sets the tile size.",
+    draw(g, c) { const t = [1, 2, 4, 4][c.s - 1];
+      each((x, y) => { const tx = Math.floor(x / t), ty = Math.floor(y / t), r = rng((c.step * 131 + tx * 17 + ty * 7) * 2654435761 + 5);
+        r(); const v = Math.floor(r() * 4); if (v < 3) g.set(x, y, v, 1); }); } },
+  { name: "Marquee", uses: "RATE SIZE", desc: "Dashes chase round the square rings like theatre lights; each ring goes the opposite way. SIZE sets the dash length.",
+    draw(g, c) { each((x, y) => { const k = Math.floor(cheb(x, y)), lo = 3 - k, hi = 4 + k, n = hi - lo;
+      let p; if (y === lo) p = x - lo; else if (x === hi) p = n + y - lo; else if (y === hi) p = 2 * n + hi - x; else p = 3 * n + hi - y;
+      const v = p + (k % 2 ? c.step : -c.step), P = 2 * c.s, m = ((v % P) + P) % P;
+      if (m < c.s) g.set(x, y, k % 3, 1); }); } },
+  { name: "Trace", uses: "RATE", desc: "A heart monitor: a line scrolls across and spikes on every kick.",
+    init(st) { st.h = new Array(8).fill(5); st.q = []; st.n = -1; },
+    draw(g, c, st) { if (c.kick && st.q.length < 4) st.q.push(3, 0, 7, 5);
+      const n = Math.floor((c.step + c.f) * 8);
+      if (st.n < 0) st.n = n;
+      while (st.n < n) { st.n++; st.h.shift(); st.h.push(st.q.length ? st.q.shift() : 5); }
+      for (let x = 0; x < 8; x++) { const a = st.h[x], b = x ? st.h[x - 1] : a, lo = Math.min(a, b), hi = Math.max(a, b);
+        for (let y = lo; y <= hi; y++) g.set(x, y, y === a ? (a === 5 ? 0 : 2) : 1, 1); } } },
 ];
 
 /* ---------------- engine: palette, mirror, react, trail, underglow ---------------- */
