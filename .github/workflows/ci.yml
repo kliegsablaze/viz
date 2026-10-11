@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # tests/plan.test.mjs plans the pages with the host's own planner
+      - uses: actions/checkout@v4
+        with:
+          repository: charlesvestal/schwung
+          path: .schwung
+      - name: Install zlib (the preview tool links it)
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - name: Run tests
+        run: SCHWUNG=.schwung bash tests/run.sh

@@ -2,7 +2,7 @@
   "id": "viz",
   "name": "Viz",
   "abbrev": "VIZ",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "dsp": "viz.so",
   "api_version": 2,
   "component_type": "audio_fx",

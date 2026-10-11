@@ -3,12 +3,15 @@
 *Viz turns a Matrix into a light show for whatever the Move is playing: bold, geometric shapes
 in clear colours, stepping on the beat, with eight knobs you can play like an instrument.*
 
-**Status:** 0.1.0 built and installed. 2026-10-11: scenes in alphabetical order, a random scene at start, MODE Beat by default, Count counts to 4, FOLD keeps everything, page names padded clear of Schwung's automation mark, and a Remote UI page that shows the 8x8 picture in a browser (awaits a device pass). On 2026-10-10 the user turned the show from organic
-pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
-gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
-Sequence and Mod pages (now SEQ and MOD, before Settings) and the knob pictures were added,
-and Viz now replaces the notes Move sends to the Matrix (passed on the device); the pages'
-device pass is next.
+**Status:** **0.2.0 released** (2026-10-11), the first release, after the user's device pass of
+everything below. 2026-10-11 before it: scenes in alphabetical order, a random scene at start,
+MODE Beat by default, Count counts to 4, FOLD keeps everything, page names padded clear of
+Schwung's automation mark, a Remote UI page that shows the 8x8 picture in a browser, and SEQ
+Random playing the 32 scenes the review flagged rarely. On 2026-10-10 the user turned the show
+from organic pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in
+the scene gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11
+the Sequence and Mod pages (now SEQ and MOD, before Settings) and the knob pictures were added,
+and Viz now replaces the notes Move sends to the Matrix.
 Written against Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's
 Matrix runs Matrix OS **3.2**.
 
@@ -23,7 +26,8 @@ wrong, and the design now follows the measurements:**
 - **Component type:** `audio_fx`, loaded in the **Master FX** row
 - **API:** plugin API v2 (`audio_fx_api_v2`), pure C, `ui_hierarchy` in `module.json`, no
   JavaScript UI on the device; a Remote UI page (`web_ui.html`) that shows only the picture
-- **Versions:** start at 0.1.0. The whole design below working smoothly is **0.5.0**.
+- **Versions:** start at 0.1.0. The first release is **0.2.0** (the user's choice: 0.1.0 plus
+  the SEQ and MOD pages and the Remote UI). The whole design below working smoothly is **0.5.0**.
 
 ---
 
@@ -1099,24 +1103,63 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
    - ~~Next: the device pass with the 100 scenes.~~ The user: "The scenes look right on the
      Matrix" (2026-10-11).
    - **The Sequence and Mod pages, and knob pictures** (2026-10-11), mocked up and approved
-     first. Next: their device pass.
-Versions 0.2.0–0.4.0 below are the organic plan. After the device pass they will be
-redrawn around the geometric set.
+     first. ~~Next: their device pass.~~ The user: "I've tested everything" (2026-10-11).
+   - **Released as 0.2.0** (2026-10-11), with the Remote UI page and the scene review.
+The later steps below are the organic plan, numbered before the 0.2.0 release took its
+name; they will be redrawn, and renumbered, around the geometric set.
 
-2. **0.2.0: Journey.**
+2. **Journey.**
    - Organic: Ink, Coral, Pollen, Moiré, Caustics, Bloom.
    - Graphic: Rings, Mirror, Steps.
    - The noise-mask dissolve, Journey (all three kinds), CYCLE.
-3. **0.3.0: Evolution.**
+3. **Evolution.**
    - Organic: Moss, Lichen, Flock, Comets, Julia, Cells.
    - Graphic: Radar, Spiral, Checker.
    - Gene drift (DRIFT), palette drift, energy arc, section changes, EDGE, dreaming.
-4. **0.4.0: The full set.**
+4. **The full set.**
    - Organic: Smoke, Stars, Dawn, Lissajous, Sea, Rain.
    - Graphic: Tunnel, Life, Sparkle.
    - The note fallback (two built-in palettes, OKLab LUT).
 5. **0.5.0: Finished.** Every scene tuned on the device, `help.json`, a manual entry,
    release, and the catalog entry.
+
+---
+
+## Releasing
+
+Same two tracks as the rest of the fleet: `scripts/install.sh` puts a dev build on your Move
+and touches nothing else; `scripts/release.sh` is the only thing that reaches anyone else.
+
+`release.sh` refuses a dirty tree, an existing tag and a private repo, runs the suite, pushes
+`main`, then tags `v<version>` from `src/module.json`. The tag starts
+`.github/workflows/release.yml`, which checks the tag matches the version, runs the suite
+again (against a fresh checkout of upstream Schwung, for the page planner), builds in
+`scripts/Dockerfile`, attaches `viz-module.tar.gz` to a GitHub release and commits
+`release.json` to `main`. Schwung Manager reads that file.
+
+**Once only**, the module needs an entry in Schwung's `module-catalog.json` (a pull request
+to `charlesvestal/schwung`):
+
+```json
+{
+  "id": "viz",
+  "name": "Viz",
+  "description": "Light shows on grid controllers and on the remote UI, played in time with whatever Move is playing.",
+  "author": "kliegsablaze",
+  "component_type": "audio_fx",
+  "subcategory": "utility",
+  "github_repo": "kliegsablaze/viz",
+  "default_branch": "main",
+  "asset_name": "viz-module.tar.gz",
+  "min_host_version": "1.7.3"
+}
+```
+
+- **`min_host_version` 1.7.3:** the version Viz was built and tested on; the links-only root
+  page, the knob pictures and the Remote UI page were checked there.
+- **`subcategory` utility:** the catalog has no light-show category, and Viz leaves the
+  audio untouched.
+- **The repo must be public:** Schwung Manager downloads anonymously.
 
 ---
 
