@@ -227,6 +227,52 @@ palettes are the fallback.
 
 ---
 
+## Other grids: the device layer
+
+The user, 2026-10-10: Viz should be useful to anyone with a grid, not only a Matrix owner,
+and Launchpads are the obvious case. They have no Launchpad, so **Launchpad support ships
+untested** and is labelled so in the help, until someone runs it.
+
+**What differs between grids is only the last step.** Scenes draw an 8x8 picture plus an
+**edge**: 32 positions, 8 per side, in the order right (top to bottom), left (top to bottom),
+bottom (left to right), top (left to right). A **device** turns that into bytes:
+
+| | Matrix | Launchpad Mini MK3 / X | Launchpad Pro MK3 | Launchpad MK2 | Launchpad Pro (2015) |
+|---|---|---|---|---|---|
+| Header | `F0 00 02 03 4D 58` | `F0 00 20 29 02 0D` / `0C` | `F0 00 20 29 02 0E` | `F0 00 20 29 02 18` | `F0 00 20 29 02 10` |
+| Colour message | `5E (idx r g b)…` | `03 (03 idx r g b)…` | `03 (03 idx r g b)…` | `0B (idx r g b)…` | `0B (idx r g b)…` |
+| Bits per channel | 6 | 7 | 7 | 6 | 6 |
+| Bytes per light | 4 | 5 | 5 | 4 | 4 |
+| Pads | idx 11–88 | 11–88 | 11–88 | 11–88 | 11–88 |
+| Edge | all 32 (underglow) | right 19–89, top 91–98 | all 32: left 10–80, right 19–89, bottom 101–108, top 91–98 | right 19–89, top 104–111 | all 32: left 10–80, right 19–89, bottom 1–8, top 91–98 |
+| Set up on load | nothing | Programmer mode `0E 01` | Programmer mode `0E 01` | Session layout `22 00` | Programmer layout `2C 03` |
+| Fill everything | `5E 00 r g b` | none | none | none | none |
+| Measured | **yes** (probe) | no | no | no | no |
+
+The Launchpad columns come from Novation's programmer's reference guides, not from a
+device. The pad index scheme (row × 10 + column, from the bottom left) is the same on every
+grid, which is why one picture serves them all.
+
+- **The user picks the grid (GRID, on Settings).** Viz can't detect it: a Master FX
+  receives nothing from the USB-A device (probe, "Nothing comes back"), so there is no
+  identity request.
+- **Set up, and set up again.** The mode message goes out when Viz loads, and again every
+  2 s with the refresh, so a replugged Launchpad comes back. Removing Viz can't send the
+  exit message (see *All-off*).
+- **Flashes on a grid without fill-all** stream like any other frame, biggest change first.
+  A whole-grid flash on a Mini MK3 costs ≈ 110 packets, so it lands over ≈ 55 ms. Using the
+  Launchpad's global brightness message (`08`) for flashes is an idea for after a Launchpad
+  has been tested.
+- **Power.** Every grid gets the same guard and budget, with its edge lights counted once
+  (only the Matrix's underglow was measured to draw more). That is a guess for Launchpads,
+  and POWER Hub turns it off.
+- **Unknown until tested:** which of a Launchpad's two or three USB-MIDI ports the Move
+  reaches (the Matrix also has two, and works); whether its SysEx survives the trip
+  (Schwung found it did not for an OXI E16, `E16_REMOTE.md:113-127`); and how much power it
+  draws.
+
+---
+
 ## Where Viz sits, and what it hears
 
 **Master FX**, chosen by the user over a Tool on 2026-10-10.
@@ -487,8 +533,12 @@ device's deadline (`plugin_api_v1.h:29-104`). So:
   - created in `create_instance`. For a Master FX that runs on the shim's loader worker, so
     the thread inherits SCHED_OTHER instead of FIFO 70 (CLAUDE.md "Loading an FX module is
     OFF the callback");
-  - wakes at RATE, reads the latest feature frame, renders, quantises, and posts a list of
-    changed pads into an SPSC ring;
+  - wakes 30 times a second, reads the latest feature frame, renders, applies LIGHT and
+    the power guard, and publishes the finished frame (8-bit RGB for every light) through a
+    **triple buffer**, so neither side ever waits;
+  - the audio thread takes the newest frame, diffs it against what each light shows, and
+    builds and sends the messages. Keeping the diff on the audio side is what lets a refused
+    packet stay pending without the two threads arguing about what was shown;
   - is joined in `destroy_instance`.
 - **Only the audio thread calls `midi_send_external`.** The external ring's two producers
   both live on the SPI callback, and "a producer added on a worker thread would break it"
@@ -574,10 +624,17 @@ nothing more.
   36–38 lit the bottom-left pads), and any light the Matrix missed, for example across a
   replug. There is no hotplug signal, and packets sent with nothing attached simply go
   nowhere.
-- **All-off:**
-  - bypass sends all-off over the next few blocks;
-  - `destroy_instance` queues all-off before tearing down;
-  - un-bypass repaints from scratch.
+- **Lights off: only through LIGHT.** Bypassing a Master FX doesn't stop it: Schwung still
+  calls `process_block` and only restores the dry audio afterwards
+  (`schwung_shim.c:3752-3768`), and Viz never touches the audio anyway. Removing Viz runs
+  `destroy_instance` on the loader thread, where sending MIDI is not allowed
+  (`ext_midi_ring.h:9-11`), so **the grid keeps its last picture after Viz is removed.**
+  help.json says: turn LIGHT to 0 first, or replug the grid. LIGHT at 0 sends black.
+- **A shared ring, shared with overtake modules.** Master FX sends are tagged
+  `EXT_SRC_OVERTAKE`, so an overtake module unloading discards Viz's queued packets
+  (`schwung_shim.c:2105`) after they were counted as sent. A SysEx message cut in half
+  times out on the Matrix after 1 s (`OS/MIDI/MIDI.cpp:11`), and the refresh repaints
+  whatever was lost within 2 s.
 
 ### TURN
 
@@ -622,7 +679,7 @@ decides how far the genes wander from it.
 | 1 | `mode` | MODE | **Sync mode.** Enum: Auto / Beat / Sound / Blend (see the table under *Mode*). Default Auto. |
 | 2 | `power` | POWER | **Power source.** Enum: Port / Hub. *Port* (default) keeps every frame inside what the Move's USB-A port can supply (measured; see *The power guard*). *Hub* removes the limit, for a Matrix on a powered USB hub. |
 | 3 | `light` | LIGHT | **Brightness.** Overall level, 0–100%, applied after the power guard, so it can only make things dimmer. Default 80%. |
-| 4 | `rate` | RATE | **Frame rate.** Enum: 20 / 30 / 45 / 60 fps. Higher is smoother but costs more MIDI. Default 30. |
+| 4 | `grid` | GRID | **Grid device.** Enum: Matrix / LP Mini MK3 / LP X / LP Pro MK3 / LP MK2 / LP Pro (see *Other grids*). Default Matrix. Launchpads are untested. |
 | 5 | `cycle` | CYCLE | **Journey phrase.** Enum: 4 / 8 / 16 / 32 / 64 bars between Journey scene changes while Move plays. Default 16. |
 | 6 | `turn` | TURN | **Rotation.** Enum: 0° / 90° / 180° / 270°. Default 0°. |
 | 7 | `edge` | EDGE | **Underglow.** Enum: Off / Glow (each side carries the picture's colour beside it) / Breathe (the beat pulses the whole ring). Default Glow. |
@@ -658,6 +715,10 @@ decides how far the genes wander from it.
 - **Saving the custom palette to flash** (`41 7D`). It wears the flash and overwrites the
   user's own palettes.
 - **A Tool instead of a Master FX.** The user's choice (see *Where Viz sits*).
+- **A RATE knob (20–60 fps).** It gave its place on Settings to GRID, because a ninth
+  Settings knob splits the page in two. Viz renders at a fixed **30 fps**; the sender already
+  degrades gracefully under load. The preview tool can still render at other rates.
+- **Detecting the grid automatically.** Nothing comes back from USB-A to a Master FX.
 
 ---
 
@@ -695,6 +756,8 @@ decides how far the genes wander from it.
   - touching the Matrix plays the Move's selected track;
   - turn off Move's MIDI output to USB-A for a clean picture;
   - turn on Move→Schwung so Viz hears Move's own instruments, not only Schwung modules;
+  - LIGHT 0 before removing Viz, or the last picture stays;
+  - Launchpads: pick GRID; untested;
   - what each knob does.
 
 ---
@@ -734,10 +797,11 @@ only what the LEDs themselves change: brightness response, colour cast, viewing 
    - Master FX never receives anything from the USB-A device (pad presses count 0).
 1. **0.1.0: the engine and the first scenes.**
    - Preview tool.
-   - Light engine: render thread, seqlock, SPSC ring, full-RGB `5E` frames with fill-all,
+   - Light engine: render thread, seqlock, triple buffer, full-RGB `5E` frames with fill-all,
      perceptual diff, power guard, budget, retry, rotating refresh, all-off.
    - Features: clock, 8 bands, three hits, automatic level, own beat.
    - All four MODEs and both pages.
+   - The device layer (GRID): the Matrix, plus five Launchpads, untested.
    - Organic scenes: Aurora, Nebula, Tide, Fireflies, Reeds, Lava.
    - Graphic scenes: Bars, Pulse, Scanner.
 2. **0.2.0: Journey.**
