@@ -865,9 +865,12 @@ the Matrix sits beside the Move. Scenes and the underglow sides rotate together.
 
 ## Control surface
 
-Four pages: page 1 holds the knobs on `root`, and links to the `sequence`, `mod` and
-`settings` levels add pages 2 to 4, in that order. The user put Settings last and named the
-new pages SEQ and MOD (2026-10-11); the header shows the link's label. A flat `chain_params` list declares every key, because without
+Four pages: `root` holds no knobs, only links to the `look`, `sequence`, `mod` and
+`settings` levels, which make pages 1 to 4 in that order. The user put Settings last and named the
+new pages SEQ and MOD (2026-10-11); the header shows the link's label. Each label ends in two
+spaces, so Schwung's automation mark (a 7x7 square over the header's right end) covers blank
+space, not a letter. Schwung calls a root that has knobs "Main" and pads nothing there, which
+the user saw as "MAI"; that is why Look is a level of its own. A flat `chain_params` list declares every key, because without
 it the Master FX cache reads only the first `params` array
 (`src/host/shadow_chain_mgmt.c:1711-1740`). Wayward is the working example
 (`wayward/src/dsp/wayward.c:1281-1335`). Schwung appends its own *My Presets* and *Module*
@@ -919,7 +922,7 @@ step's (keys `s1_scene` … `s8_fold`).
 | 3 | `sN_bars` | BARS | **Step N length.** Off, Random, 1 beat, 2 beats, 1 bar, 2, 4, 8 bars. Default 1 bar for step 1, Off for the rest. |
 | 4 | `play` | PLAY | **Play the sequence.** Off / On. Default Off. |
 | 5 | `sN_color` | COLOR | **Step N colour set.** Random, Same, then the nine sets. Default Random. |
-| 6 | `sN_rate` | RATE | **Step N steps, on the beat.** Random, Same, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/8, 1/16. Default Random. |
+| 6 | `sN_rate` | RATE | **Step N steps, on the beat.** Random, Same, 4 bars, 2 bars, 1 bar, 1/2, 1/4, 1/8, 1/16. Default 1/4. |
 | 7 | `sN_size` | SIZE | **Step N shape size.** Random, Same, 1–4. Default Random. |
 | 8 | `sN_fold` | FOLD | **Step N mirror fold.** Random, Same, Off, Sides, Top, Four, Eight. Default Four. |
 

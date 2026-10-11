@@ -971,7 +971,7 @@ static void test_controls(const char *dir) {
     /* defaults, as the user set them (2026-10-11) */
     void *d = make();
     const char *want[][2] = { { "play", "Off" }, { "s1_bars", "1 bar" }, { "s2_bars", "Off" }, { "s8_bars", "Off" },
-                              { "mode", "Beat" }, { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "Random" },
+                              { "mode", "Beat" }, { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "1/4" },
                               { "s4_size", "Random" }, { "s4_fold", "Four" }, { "m1_depth", "0.00" } };
     for (unsigned i = 0; i < sizeof want / sizeof want[0]; i++) {
         api->get_param(d, want[i][0], buf, sizeof buf);

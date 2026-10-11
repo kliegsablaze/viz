@@ -49,10 +49,11 @@ for (let step = 1; step <= 8; step++) {
     check(JSON.stringify(pages[3]?.keys) === JSON.stringify(settings), `page 4 is ${JSON.stringify(pages[3]?.keys)}`);
 }
 // Schwung's automation mark clears x 121..127 of the header (shadow_ui.js
-// drawPlockMark); every page name but the host's own "Main" ends left of it.
+// drawPlockMark); every page name ends left of it, and none is the host's "Main".
 {
     const pages = planPages({ hierarchy, chainParams, visible: visibleFor({ step: "1" }) }).pages.filter((p) => Array.isArray(p.keys));
-    for (const pg of pages.slice(1)) {
+    check(pages[0]?.name === "Look  ", `the first page is Look, got ${JSON.stringify(pages[0]?.name)}`);
+    for (const pg of pages) {
         let right = 0;
         drawHeader({ fillRect: (x, y, w, h, c) => { if (c && w < 128) right = Math.max(right, x + w - 1); } }, "", pg.name);
         check(right > 100 && right < 121, `page "${pg.name}" ends at x ${right}, clear of the mark`);

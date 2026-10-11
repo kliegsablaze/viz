@@ -61,8 +61,8 @@ typedef struct {
 } viz_seq_t;
 
 void viz_seq_init(viz_seq_t *s);
-/* Defaults: PLAY Off; step 1 one bar, the rest Off; Random scene, colour,
- * rate and size, fold Four; both LFOs at depth 0. */
+/* Defaults: PLAY Off; step 1 one bar, the rest Off; Random scene, colour
+ * and size, rate 1/4, fold Four; both LFOs at depth 0. */
 void viz_seq_defaults(viz_seq_params_t *p);
 /* Applies the sequence, then the LFOs, to a look built from the knobs. */
 void viz_seq_apply(viz_seq_t *s, const viz_seq_params_t *p, const viz_features_t *f, viz_look_t *L);

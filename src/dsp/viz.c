@@ -510,12 +510,17 @@ static void sb(sb_t *b, const char *fmt, ...) {
 }
 /* Two spaces after a page name: Schwung's automation mark (a 7x7 square at
  * the header's right edge) then lands on blank space instead of the name's
- * last letter. Schwung keeps the spaces; the root page is always "Main". */
+ * last letter. Schwung keeps the spaces. Schwung names a root with knobs
+ * "Main" and pads nothing there, so root holds only the links and Look is a
+ * level of its own (the user saw "MAI", 2026-10-11). */
 #define PAGE(name) name "  "
 static void level(sb_t *b, const char *name, const char *label, const int *keys, int n, int links) {
     sb(b, "\"%s\":{\"label\":\"%s\",\"knobs\":[", name, label);
     for (int i = 0; i < n; i++) sb(b, "%s\"%s\"", i ? "," : "", k_params[keys[i]].key);
     sb(b, "],\"params\":[");
+    if (links)
+        sb(b, "{\"level\":\"look\",\"label\":\"" PAGE("Look") "\"},{\"level\":\"sequence\",\"label\":\"" PAGE("SEQ") "\"},"
+              "{\"level\":\"mod\",\"label\":\"" PAGE("MOD") "\"},{\"level\":\"settings\",\"label\":\"" PAGE("Settings") "\"}");
     for (int i = 0; i < n; i++) {
         int k = keys[i];
         sb(b, "%s{\"key\":\"%s\"", i ? "," : "", k_params[k].key);
@@ -523,14 +528,11 @@ static void level(sb_t *b, const char *name, const char *label, const int *keys,
             sb(b, ",\"visible_if\":{\"param\":\"step\",\"equals\":\"%d\"}", (k - P_SEQ0) / SF_COUNT + 1);
         sb(b, "}");
     }
-    if (links)
-        sb(b, ",{\"level\":\"sequence\",\"label\":\"" PAGE("SEQ") "\"},{\"level\":\"mod\",\"label\":\"" PAGE("MOD") "\"},"
-              "{\"level\":\"settings\",\"label\":\"" PAGE("Settings") "\"}");
     sb(b, "]}");
 }
 
-/* Look on root, then SEQ, MOD and Settings, in the order the jog walks
- * them (the order of root's links). The Sequence page lists every step's knobs; the gates leave the
+/* Root links Look, SEQ, MOD and Settings, in the order the jog walks
+ * them. The Sequence page lists every step's knobs; the gates leave the
  * chosen step's, so it reads STEP SCENE BARS PLAY over COLOR RATE SIZE FOLD. */
 static int ui_hierarchy(char *buf, int len) {
     int look[8], set[8], seq[2 + SEQ_STEPS * SF_COUNT], mod[SEQ_MODS * MF_COUNT], n = 0;
@@ -544,7 +546,9 @@ static int ui_hierarchy(char *buf, int len) {
     for (int i = 0; i < SEQ_MODS * MF_COUNT; i++) mod[i] = P_MOD0 + i;
     sb_t b = { buf, len, 0 };
     sb(&b, "{\"modes\":null,\"levels\":{");
-    level(&b, "root", "Viz", look, 8, 1);
+    level(&b, "root", "Viz", NULL, 0, 1);
+    sb(&b, ",");
+    level(&b, "look", PAGE("Look"), look, 8, 0);
     sb(&b, ",");
     level(&b, "sequence", PAGE("SEQ"), seq, n, 0);
     sb(&b, ",");
