@@ -1,0 +1,147 @@
+{
+  "title": "Viz",
+  "children": [
+    {
+      "title": "Overview",
+      "lines": [
+        "Living light on a",
+        "grid for whatever",
+        "Move is playing.",
+        "",
+        "Viz lights a 203",
+        "Systems Matrix on",
+        "the USB-A port. It",
+        "follows Move's",
+        "clock when Move",
+        "plays, and the",
+        "sound when it is",
+        "stopped.",
+        "",
+        "It never changes",
+        "the audio."
+      ]
+    },
+    {
+      "title": "Setting up",
+      "lines": [
+        "1. Plug the Matrix",
+        "into USB-A.",
+        "2. On the Matrix,",
+        "open Performance",
+        "(the red app).",
+        "3. Load Viz into",
+        "Master FX.",
+        "",
+        "Dark grid? Unplug",
+        "the Matrix and",
+        "plug it back in.",
+        "",
+        "To light up to",
+        "Move's own sounds,",
+        "turn on Move to",
+        "Schwung in Global",
+        "Settings. Schwung",
+        "modules always",
+        "reach Viz.",
+        "",
+        "Touching the grid",
+        "plays the Move's",
+        "selected track.",
+        "",
+        "For a clean",
+        "picture, turn off",
+        "Move's MIDI out to",
+        "USB-A."
+      ]
+    },
+    {
+      "title": "Power",
+      "lines": [
+        "The USB-A port",
+        "cannot power a",
+        "fully bright grid.",
+        "Too much light and",
+        "the Matrix locks up",
+        "until replugged.",
+        "",
+        "POWER Port (the",
+        "default) keeps",
+        "every frame within",
+        "what the port can",
+        "give, at any Matrix",
+        "brightness.",
+        "",
+        "POWER Hub lifts the",
+        "limit. Use it only",
+        "with a powered USB",
+        "hub."
+      ]
+    },
+    {
+      "title": "Lights off",
+      "lines": [
+        "Removing Viz keeps",
+        "the last picture",
+        "on the grid. Turn",
+        "LIGHT to 0 first,",
+        "or replug the grid."
+      ]
+    },
+    {
+      "title": "Launchpads",
+      "lines": [
+        "Set GRID to your",
+        "Launchpad: Mini",
+        "MK3, X, Pro MK3,",
+        "MK2 or Pro.",
+        "",
+        "Untested: built",
+        "from Novation's",
+        "guides, not on a",
+        "real Launchpad."
+      ]
+    },
+    {
+      "title": "Look",
+      "lines": [
+        "SCENE: the picture.",
+        "COLOR: the colours.",
+        "FLOW: how fast it",
+        "moves.",
+        "GROW: how much",
+        "detail.",
+        "BLOOM: glow and",
+        "trails.",
+        "REACT: how hard the",
+        "music pushes it.",
+        "WARP: turbulence.",
+        "DRIFT: how fast the",
+        "colours wander."
+      ]
+    },
+    {
+      "title": "Settings",
+      "lines": [
+        "MODE: Auto follows",
+        "the clock while",
+        "Move plays and the",
+        "sound when stopped.",
+        "Beat: clock only.",
+        "Sound: sound only.",
+        "Blend: clock, with",
+        "the sound twice as",
+        "strong.",
+        "",
+        "LIGHT: brightness.",
+        "GRID: which grid.",
+        "CYCLE: bars between",
+        "scene changes (in",
+        "a later version).",
+        "TURN: rotate.",
+        "EDGE: underglow.",
+        "NUDGE: lights",
+        "earlier or later."
+      ]
+    }
+  ]
+}
