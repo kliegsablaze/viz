@@ -196,8 +196,6 @@ static int find(const char *const *names, int n, const char *v) {
     return -1;
 }
 
-/* A colour each scene is shown in by default, chosen to suit it. */
-static const int k_scene_color[SCENE_COUNT] = { 5, 0, 1, 3, 3, 2, 7, 4, 9 };
 
 int main(int argc, char **argv) {
     const char *wav = NULL, *out = "build/preview.html";
@@ -213,7 +211,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--seconds")) { seconds = atoi(v); i++; }
         else if (!strcmp(a, "--play")) { sscanf(v, "%lf-%lf", &play_from, &play_to); i++; }
         else if (!strcmp(a, "--scene")) { only = find(viz_scene_names, SCENE_COUNT, v); i++; }
-        else if (!strcmp(a, "--color")) { color = find(viz_color_names, COLOR_COUNT, v); i++; }
+        else if (!strcmp(a, "--color")) { color = find(viz_shape_color_names, SHAPE_COLORS, v); i++; }
         else if (!strcmp(a, "--mode")) {
             static const char *const m[] = { "Auto", "Beat", "Sound", "Blend" };
             mode = find(m, 4, v); if (mode < 0) mode = 0; i++;
@@ -278,8 +276,7 @@ int main(int argc, char **argv) {
     fprintf(o, "const FPS=%d,PLAY=[%.3f,%.3f];\nconst SCENES=[\n", VIZ_FPS, play_from, play_to);
     for (int k = 0; k < ns; k++) {
         int sc = scenes[k];
-        viz_look_t look = { .scene = sc, .color = color >= 0 ? color : k_scene_color[sc], .flow = 0.5f, .grow = 0.5f,
-                            .bloom = 0.4f, .react = 0.6f, .warp = 0.4f, .drift = 0.3f, .light = 0.8f,
+        viz_look_t look = { .scene = sc, .k = { color >= 0 ? color : 2, 2, 1, 1, 0, 1, 1 }, .light = 0.8f,
                             .edge = EDGEMODE_GLOW, .edge_weight = 2.0f, .edge_sides = 15 };
         viz_render_t *r = viz_render_new(0x5EED1234u);
         viz_frame_t fr;
@@ -289,10 +286,10 @@ int main(int argc, char **argv) {
             memcpy(pix + (size_t)i * NLIGHT * 3, fr.rgb, NLIGHT * 3);
         }
         viz_render_free(r);
-        fprintf(o, "{name:\"%s\",color:\"%s\",d:\"", viz_scene_names[sc], viz_color_names[look.color]);
+        fprintf(o, "{name:\"%s\",color:\"%s\",d:\"", viz_scene_names[sc], viz_shape_color_names[look.k.color]);
         b64_deflate(o, pix, (size_t)nf * NLIGHT * 3);
         fprintf(o, "\"},\n");
-        fprintf(stderr, "preview: %s (%s), %d frames\n", viz_scene_names[sc], viz_color_names[look.color], nf);
+        fprintf(stderr, "preview: %s (%s), %d frames\n", viz_scene_names[sc], viz_shape_color_names[look.k.color], nf);
         if (stats) {
             /* pad brightness (mean of R,G,B, 0..255): average, how many pads are
              * near black, how many bright, and how much the picture changes */

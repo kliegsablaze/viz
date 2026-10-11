@@ -2,8 +2,9 @@
  * viz.h — what the pieces of Viz share (DESIGN.md, "The light engine").
  *
  *   features.c  listening: bands, hits, the automatic level, time (audio thread)
- *   render.c    pictures: scenes, palettes, bloom, edge, LIGHT, power guard
- *   scenes.c    the scenes themselves
+ *   render.c    pictures: either kind of scene, edge, LIGHT, power guard
+ *   shapes.c    the hundred pad-sharp scenes and the Look page's knobs
+ *   scenes.c    the six organic extras
  *   device.c    grids: turning a finished frame into SysEx, within budget
  *   viz.c       the Schwung plugin: params, threads, hand-offs
  *
@@ -14,6 +15,8 @@
 #define VIZ_H
 
 #include <stdint.h>
+
+#include "shapes.h"
 
 #define VIZ_SR      44100
 #define VIZ_BLOCK   128
@@ -78,14 +81,18 @@ void viz_listen_block(viz_listen_t *l, const int16_t *io, int frames,
 
 /* ---- the knobs, as the renderer sees them -------------------------------- */
 
-enum { SCENE_AURORA, SCENE_NEBULA, SCENE_TIDE, SCENE_FIREFLIES, SCENE_REEDS, SCENE_LAVA,
-       SCENE_BARS, SCENE_PULSE, SCENE_SCANNER, SCENE_COUNT };
-#define COLOR_COUNT 10
+/* SCENE: the hundred shapes (shapes.h) first, then the six organic extras. */
+enum { ORG_AURORA, ORG_NEBULA, ORG_TIDE, ORG_FIREFLIES, ORG_REEDS, ORG_LAVA, ORGANIC_COUNT };
+#define SCENE_ORGANIC   SHAPE_COUNT
+#define SCENE_COUNT     (SHAPE_COUNT + ORGANIC_COUNT)
+#define SCENE_FIREFLIES (SCENE_ORGANIC + ORG_FIREFLIES)
+#define COLOR_COUNT 10          /* the organic scenes' own gradients */
 enum { EDGEMODE_OFF, EDGEMODE_GLOW, EDGEMODE_BREATHE };
 
 typedef struct {
-    int   scene, color;
-    float flow, grow, bloom, react, warp, drift;   /* 0..1 */
+    int   scene;
+    /* the Look page, as option indexes (shapes.h): COLOR RATE SIZE TRAIL FOLD SHIFT REACT */
+    viz_shape_knobs_t k;
     float light;                                   /* 0..1 */
     int   hub;                                     /* POWER Hub: no guard */
     int   turn;                                    /* quarter turns clockwise */
@@ -94,7 +101,7 @@ typedef struct {
     unsigned edge_sides;                           /* bit per EDGE_* side the grid has */
 } viz_look_t;
 
-extern const char *const viz_scene_names[SCENE_COUNT];
+extern const char *viz_scene_names[SCENE_COUNT];   /* filled before main */
 extern const char *const viz_color_names[COLOR_COUNT];
 
 /* ---- a finished frame (render thread -> audio thread) ------------------- */
@@ -118,10 +125,16 @@ const float *viz_render_field_rgb(const viz_render_t *r);   /* FIELD*FIELD*3, 0.
 
 /* ---- scenes (scenes.c) ---------------------------------------------------- */
 
+/* What an organic scene reads of the knobs: the Look page, translated. */
+typedef struct {
+    int   color;                                   /* a gradient, COLOR_COUNT */
+    float flow, grow, bloom, react, warp, drift;   /* 0..1 */
+} viz_organic_look_t;
+
 typedef struct {
     /* in */
     const viz_features_t *f;
-    const viz_look_t *look;
+    const viz_organic_look_t *look;
     float t;            /* scene time: seconds, scaled by FLOW and tempo */
     float dt;           /* scene time step */
     float rdt;          /* real time step */
@@ -132,7 +145,7 @@ typedef struct {
     float beat_phase;   /* 0..1 */
     float bar_phase;
     uint32_t *rng;
-    /* out: organic scenes fill FIELD*FIELD, graphic ones 8*8 */
+    /* out: FIELD*FIELD */
     float *inten;       /* brightness, 0..1 (may exceed) */
     float *coord;       /* where in the colour gradient, any real */
 } viz_scene_io_t;
@@ -141,12 +154,11 @@ typedef struct {
 
 typedef struct {
     const char *name;
-    int graphic;        /* 1: drawn at 8x8, no supersampling */
     void (*init)(void *state, uint32_t *rng);
     void (*render)(void *state, viz_scene_io_t *io);
 } viz_scene_t;
 
-extern const viz_scene_t viz_scenes[SCENE_COUNT];
+extern const viz_scene_t viz_organic[ORGANIC_COUNT];
 
 /* small shared helpers */
 float viz_noise3(float x, float y, float z);       /* gradient noise, about -1..1 */

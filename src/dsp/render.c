@@ -2,12 +2,14 @@
  * render.c — from a scene to a finished frame (DESIGN.md, "Rendering",
  * "Colour", "The power guard").
  *
- *   scene (32x32 organic, or 8x8 graphic): a brightness and a gradient
- *   coordinate per sample
- *   -> COLOR gradient (cosine palette, drifting) -> colour per sample
- *   -> 4x4 box average per pad (the antialiasing)
- *   -> scene change crossfade -> BLOOM (soften, linger) -> TURN
- *   -> EDGE (underglow / Launchpad side buttons) -> LIGHT -> power guard
+ *   a shape (shapes.c): 64 pads already coloured, folded, kicked and
+ *   trailed by the Look page
+ *   or an organic scene: a brightness and a gradient coordinate per sample
+ *     -> gradient (cosine palette, drifting) -> colour per sample
+ *     -> 4x4 box average per pad (the antialiasing)
+ *     -> scene change crossfade -> FOLD -> BLOOM (soften, linger)
+ *   then for both: TURN -> EDGE (underglow / Launchpad side buttons)
+ *   -> LIGHT -> power guard
  *
  * Runs on the render thread on the Move, and in the preview tool on a Mac.
  * Everything is allocated in viz_render_new.
@@ -106,24 +108,48 @@ float viz_fbm3(float x, float y, float z, int octaves) {
     return sum / norm;
 }
 
+/* ---- the scene list ------------------------------------------------------ */
+
+const char *viz_scene_names[SCENE_COUNT];
+
+__attribute__((constructor)) static void scene_names(void) {
+    for (int i = 0; i < SHAPE_COUNT; i++) viz_scene_names[i] = viz_shape_names[i];
+    for (int i = 0; i < ORGANIC_COUNT; i++) viz_scene_names[SCENE_ORGANIC + i] = viz_organic[i].name;
+}
+
+/* COLOR's nine sets, as the organic scenes' nearest gradients. */
+static const int k_org_color[SHAPE_COLORS] = {
+    6 /* Ice: Ink */, 2 /* Fire: Ember */, 9 /* Acid: Neon */, 0 /* Sunset: Dusk */, 3 /* Mint: Moss */,
+    4 /* Royal: Orchid */, 4 /* Candy: Orchid */, 8 /* Mono: Bone */, 7 /* Rainbow: Prism */
+};
+static const float k_org_react[SHAPE_REACTS] = { 0.0f, 0.45f, 0.6f, 0.8f, 1.0f };
+
 /* ---- the renderer ------------------------------------------------------- */
 
 struct viz_render {
+    /* organic */
     _Alignas(16) uint8_t state[2][SCENE_STATE_BYTES];
-    int   slot_scene[2];
+    int   slot_scene[2];    /* organic index, -1 for none */
     int   cur;              /* index of the current slot */
     float fade;             /* < 0: no change under way; else 0..1 toward the other slot */
     float fade_time;
-    float t;                /* scene time */
-    uint32_t rng;
-    uint32_t last_hits[3];
-    double last_beat;
-    int   started;
+    float t;                /* organic scene time */
     float pal_phase;
     float inten[2][FIELD * FIELD], coord[2][FIELD * FIELD];
     float field_rgb[FIELD * FIELD * 3];
     float pads[2][NPAD][3];
-    float out[NLIGHT][3];   /* after bloom, kept for persistence */
+    /* shapes */
+    viz_shapes_t shapes;
+    double time;
+    long  last16;
+    uint8_t log[64];
+    /* both */
+    uint32_t rng;
+    uint32_t last_hits[3];
+    double last_beat;
+    int   started;
+    int   was_shape;
+    float out[NLIGHT][3];   /* the last frame, before LIGHT: organic BLOOM lingers on it */
 };
 
 viz_render_t *viz_render_new(uint32_t seed) {
@@ -132,6 +158,9 @@ viz_render_t *viz_render_new(uint32_t seed) {
     r->rng = seed ? seed : 1;
     r->slot_scene[0] = r->slot_scene[1] = -1;
     r->fade = -1;
+    r->last16 = -1;
+    r->was_shape = -1;
+    viz_shapes_init(&r->shapes);
     return r;
 }
 
@@ -139,7 +168,7 @@ void viz_render_free(viz_render_t *r) { free(r); }
 
 const float *viz_render_field_rgb(const viz_render_t *r) { return r->field_rgb; }
 
-static void palette(const viz_look_t *look, float phase, float t, float rgb[3]) {
+static void palette(const viz_organic_look_t *look, float phase, float t, float rgb[3]) {
     const cospal_t *p = &k_pal[look->color >= 0 && look->color < COLOR_COUNT ? look->color : 0];
     float m = 0;
     for (int i = 0; i < 3; i++) {
@@ -155,33 +184,15 @@ static void palette(const viz_look_t *look, float phase, float t, float rgb[3]) 
     for (int i = 0; i < 3; i++) rgb[i] *= k;
 }
 
-/* Draw one scene into its slot and reduce it to 64 pad colours. */
-static void draw_slot(viz_render_t *r, int slot, const viz_look_t *look, const viz_features_t *f,
-                      viz_scene_io_t *io, int keep_field) {
-    const viz_scene_t *sc = &viz_scenes[r->slot_scene[slot]];
+/* Draw one organic scene into its slot and reduce it to 64 pad colours. */
+static void draw_slot(viz_render_t *r, int slot, const viz_organic_look_t *look, viz_scene_io_t *io, int keep_field) {
+    const viz_scene_t *sc = &viz_organic[r->slot_scene[slot]];
     io->inten = r->inten[slot];
     io->coord = r->coord[slot];
     memset(r->inten[slot], 0, sizeof r->inten[slot]);
     memset(r->coord[slot], 0, sizeof r->coord[slot]);
     sc->render(r->state[slot], io);
-    (void)f;
 
-    if (sc->graphic) {
-        for (int i = 0; i < NPAD; i++) {
-            float c[3];
-            palette(look, r->pal_phase, r->coord[slot][i], c);
-            float v = r->inten[slot][i];
-            if (v < 0) v = 0;
-            for (int k = 0; k < 3; k++) r->pads[slot][i][k] = c[k] * v;
-        }
-        if (keep_field) {
-            for (int y = 0; y < FIELD; y++)
-                for (int x = 0; x < FIELD; x++)
-                    for (int k = 0; k < 3; k++)
-                        r->field_rgb[(y * FIELD + x) * 3 + k] = r->pads[slot][(y / 4) * 8 + x / 4][k];
-        }
-        return;
-    }
     float acc[NPAD][3];
     memset(acc, 0, sizeof acc);
     for (int y = 0; y < FIELD; y++)
@@ -203,39 +214,148 @@ static void draw_slot(viz_render_t *r, int slot, const viz_look_t *look, const v
         for (int k = 0; k < 3; k++) r->pads[slot][i][k] = acc[i][k] * (1.0f / 16);
 }
 
-void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_features_t *f,
-                      float dt, viz_frame_t *out) {
-    int want = look->scene >= 0 && look->scene < SCENE_COUNT ? look->scene : 0;
+/* FOLD on 64 pads, the same fold shapes.c applies to its scenes. */
+static void fold(float pads[NPAD][3], int m) {
+    if (!m) return;
+    float src[NPAD][3];
+    memcpy(src, pads, sizeof src);
+    for (int y = 0; y < 8; y++)
+        for (int x = 0; x < 8; x++) {
+            int sx = x, sy = y;
+            if ((m == 1 || m >= 3) && sx > 3) sx = 7 - sx;
+            if ((m == 2 || m >= 3) && sy > 3) sy = 7 - sy;
+            if (m == 4 && sx > sy) { int t = sx; sx = sy; sy = t; }
+            memcpy(pads[y * 8 + x], src[sy * 8 + sx], sizeof src[0]);
+        }
+}
 
-    if (r->slot_scene[r->cur] < 0) {          /* first frame */
+/* An organic frame: 64 pads, 0..1, before TURN. Returns BLOOM's linger. */
+static float organic_frame(viz_render_t *r, const viz_look_t *look, const viz_features_t *f,
+                           viz_scene_io_t *io, float dt, float pads[NPAD][3]) {
+    int want = look->scene - SCENE_ORGANIC;
+    viz_organic_look_t L;
+    const viz_shape_knobs_t *k = &look->k;
+    L.color = k_org_color[k->color >= 0 && k->color < SHAPE_COLORS ? k->color : 0];
+    L.flow = k->rate / (float)(SHAPE_RATES - 1);
+    L.grow = k->size / (float)(SHAPE_SIZES - 1);
+    L.bloom = k->trail / (float)(SHAPE_TRAILS - 1);
+    L.react = k_org_react[k->react >= 0 && k->react < SHAPE_REACTS ? k->react : 1];
+    L.warp = 0.4f;
+    L.drift = 0.3f;
+
+    if (r->slot_scene[r->cur] < 0) {          /* first organic frame */
         r->slot_scene[r->cur] = want;
-        viz_scenes[want].init(r->state[r->cur], &r->rng);
+        viz_organic[want].init(r->state[r->cur], &r->rng);
     }
     if (r->fade < 0 && want != r->slot_scene[r->cur]) {
         int o = 1 - r->cur;                   /* a new scene seeps in over one beat */
         r->slot_scene[o] = want;
-        viz_scenes[want].init(r->state[o], &r->rng);
+        viz_organic[want].init(r->state[o], &r->rng);
         r->fade = 0;
         float beat_s = f->bpm > 20 ? 60.0f / f->bpm : 0.5f;
         r->fade_time = beat_s < 0.4f ? 0.4f : beat_s > 1.5f ? 1.5f : beat_s;
     }
 
-    /* Time: FLOW from a quarter to four times, tempo-relative. */
-    float speed = exp2f((look->flow - 0.5f) * 4.0f);
+    /* Time: RATE from a quarter to four times, tempo-relative. */
+    float speed = exp2f((L.flow - 0.5f) * 4.0f);
     float tempo = f->bpm > 20 ? f->bpm / 120.0f : 1.0f;
     if (tempo < 0.5f) tempo = 0.5f;
     if (tempo > 2.0f) tempo = 2.0f;
     float sdt = dt * speed * tempo;
     r->t += sdt;
+    io->look = &L;
+    io->t = r->t;
+    io->dt = sdt;
+    io->react = f->sound ? L.react * f->react_scale : 0.0f;
+
+    /* The palette's mood creeps, and steps a little on each bar. */
+    r->pal_phase += dt * (0.004f + 0.03f * L.drift) + (io->bar_tick ? 0.02f * L.drift : 0);
+    if (r->pal_phase > 1000) r->pal_phase -= 1000;
+
+    draw_slot(r, r->cur, &L, io, 1);
+    memcpy(pads, r->pads[r->cur], sizeof r->pads[0]);
+    if (r->fade >= 0) {
+        int o = 1 - r->cur;
+        draw_slot(r, o, &L, io, 0);
+        r->fade += dt / r->fade_time;
+        float m = r->fade > 1 ? 1 : r->fade;
+        m = m * m * (3 - 2 * m);
+        for (int i = 0; i < NPAD; i++)
+            for (int c = 0; c < 3; c++) pads[i][c] = pads[i][c] * (1 - m) + r->pads[o][i][c] * m;
+        if (r->fade >= 1) { r->cur = o; r->fade = -1; }
+    }
+    fold(pads, k->mirror);
+
+    /* BLOOM (TRAIL): a little blur, and light that lingers. */
+    float blur = L.bloom * 0.45f;
+    float soft[NPAD][3];
+    for (int y = 0; y < 8; y++)
+        for (int x = 0; x < 8; x++)
+            for (int c = 0; c < 3; c++) {
+                float s = 0; int n = 0;
+                if (x > 0) { s += pads[y * 8 + x - 1][c]; n++; }
+                if (x < 7) { s += pads[y * 8 + x + 1][c]; n++; }
+                if (y > 0) { s += pads[(y - 1) * 8 + x][c]; n++; }
+                if (y < 7) { s += pads[(y + 1) * 8 + x][c]; n++; }
+                float v = pads[y * 8 + x][c];
+                soft[y * 8 + x][c] = v + blur * (s / n - v);
+            }
+    memcpy(pads, soft, sizeof soft);
+    return 0.45f + 0.5f * L.bloom;
+}
+
+/* A shape frame: 64 pads, 0..1, before TURN. */
+static void shape_frame(viz_render_t *r, const viz_look_t *look, const viz_features_t *f,
+                        const int new_hits[3], float dt, float pads[NPAD][3]) {
+    viz_shape_feat_t sf;
+    memset(&sf, 0, sizeof sf);
+    r->time += dt;
+    sf.beats = f->beat;
+    sf.time = r->time;
+    sf.dt = dt;
+    sf.beats_per_bar = f->beats_per_bar;
+    sf.kick_count = f->hits[0];
+    if (f->sound) {
+        sf.kick = f->hit[0];
+        sf.snare = f->hit[1];
+        sf.hat = f->hit[2];
+        sf.bass = 0.5 * ((double)f->band[0] + f->band[1]);
+        sf.kick_now = new_hits[0] > 0;
+        sf.snare_now = new_hits[1] > 0;
+        sf.hat_now = new_hits[2] > 0;
+        memcpy(sf.bands, f->band, sizeof sf.bands);
+    }
+    /* The last four bars of hits, a 16th per slot, for Steps and Tally. */
+    long n16 = (long)floor(f->beat * 4);
+    if (r->last16 < 0 || n16 < r->last16 || n16 - r->last16 >= 64) memset(r->log, 0, sizeof r->log);
+    else for (long i = r->last16 + 1; i <= n16; i++) r->log[i % 64] = 0;
+    r->last16 = n16;
+    r->log[n16 % 64] |= (sf.kick_now ? HIT_KICK : 0) | (sf.snare_now ? HIT_SNARE : 0) | (sf.hat_now ? HIT_HAT : 0);
+    memcpy(sf.log, r->log, sizeof sf.log);
+
+    viz_shapes_frame(&r->shapes, look->scene, &look->k, &sf);
+    for (int i = 0; i < NPAD; i++)
+        for (int c = 0; c < 3; c++) pads[i][c] = r->shapes.disp[i * 3 + c] * (1.0f / 255);
+}
+
+void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_features_t *f,
+                      float dt, viz_frame_t *out) {
+    viz_look_t lk = *look;
+    if (lk.scene < 0 || lk.scene >= SCENE_COUNT) lk.scene = 0;
+    look = &lk;
+    int shape = look->scene < SHAPE_COUNT;
+    if (shape != r->was_shape) {              /* changing kind starts the new kind fresh */
+        r->slot_scene[0] = r->slot_scene[1] = -1;
+        r->fade = -1;
+        r->shapes.scene = -1;
+        memset(r->out, 0, sizeof r->out);
+        r->was_shape = shape;
+    }
 
     viz_scene_io_t io;
     memset(&io, 0, sizeof io);
     io.f = f;
-    io.look = look;
-    io.t = r->t;
-    io.dt = sdt;
     io.rdt = dt;
-    io.react = f->sound ? look->react * f->react_scale : 0.0f;
     io.rng = &r->rng;
     for (int g = 0; g < 3; g++) {
         uint32_t d = f->hits[g] - r->last_hits[g];
@@ -256,39 +376,10 @@ void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_feature
         io.bar_phase = (float)(bars - floor(bars));
     }
 
-    /* The palette's mood creeps, and steps a little on each bar (DRIFT). */
-    r->pal_phase += dt * (0.004f + 0.03f * look->drift) + (io.bar_tick ? 0.02f * look->drift : 0);
-    if (r->pal_phase > 1000) r->pal_phase -= 1000;
-
     float pads[NPAD][3];
-    draw_slot(r, r->cur, look, f, &io, 1);
-    memcpy(pads, r->pads[r->cur], sizeof pads);
-    if (r->fade >= 0) {
-        int o = 1 - r->cur;
-        draw_slot(r, o, look, f, &io, 0);
-        r->fade += dt / r->fade_time;
-        float m = r->fade > 1 ? 1 : r->fade;
-        m = m * m * (3 - 2 * m);
-        for (int i = 0; i < NPAD; i++)
-            for (int k = 0; k < 3; k++) pads[i][k] = pads[i][k] * (1 - m) + r->pads[o][i][k] * m;
-        if (r->fade >= 1) { r->cur = o; r->fade = -1; }
-    }
-
-    /* BLOOM: a little blur, and light that lingers. */
-    float blur = look->bloom * 0.45f;
-    float linger = 0.45f + 0.5f * look->bloom;
-    float soft[NPAD][3];
-    for (int y = 0; y < 8; y++)
-        for (int x = 0; x < 8; x++)
-            for (int k = 0; k < 3; k++) {
-                float s = 0; int n = 0;
-                if (x > 0) { s += pads[y * 8 + x - 1][k]; n++; }
-                if (x < 7) { s += pads[y * 8 + x + 1][k]; n++; }
-                if (y > 0) { s += pads[(y - 1) * 8 + x][k]; n++; }
-                if (y < 7) { s += pads[(y + 1) * 8 + x][k]; n++; }
-                float v = pads[y * 8 + x][k];
-                soft[y * 8 + x][k] = v + blur * (s / n - v);
-            }
+    float linger = 0;                         /* shapes carry their own TRAIL */
+    if (shape) shape_frame(r, look, f, io.new_hits, dt, pads);
+    else linger = organic_frame(r, look, f, &io, dt, pads);
 
     /* TURN: quarter turns clockwise, before the edge is taken from the pads. */
     float turned[NPAD][3];
@@ -296,7 +387,7 @@ void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_feature
         for (int x = 0; x < 8; x++) {
             int sx = x, sy = y;
             for (int q = 0; q < (look->turn & 3); q++) { int tx = sy, ty = 7 - sx; sx = tx; sy = ty; }
-            memcpy(turned[y * 8 + x], soft[sy * 8 + sx], sizeof turned[0]);
+            memcpy(turned[y * 8 + x], pads[sy * 8 + sx], sizeof turned[0]);
         }
 
     float lights[NLIGHT][3];
@@ -306,21 +397,30 @@ void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_feature
     for (int s = 0; s < 4; s++)
         for (int i = 0; i < 8; i++) {
             float *e = lights[NPAD + s * 8 + i];
+            int ax, ay, bx, by;
+            switch (s) {
+            case EDGE_RIGHT:  ax = 7; ay = i; bx = 6; by = i; break;
+            case EDGE_LEFT:   ax = 0; ay = i; bx = 1; by = i; break;
+            case EDGE_BOTTOM: ax = i; ay = 7; bx = i; by = 6; break;
+            default:          ax = i; ay = 0; bx = i; by = 1; break;
+            }
             if (!(look->edge_sides & (1u << s))) {
                 e[0] = e[1] = e[2] = 0;          /* this grid has no lights there */
             } else if (look->edge == EDGEMODE_GLOW) {
-                int ax, ay, bx, by;
-                switch (s) {
-                case EDGE_RIGHT:  ax = 7; ay = i; bx = 6; by = i; break;
-                case EDGE_LEFT:   ax = 0; ay = i; bx = 1; by = i; break;
-                case EDGE_BOTTOM: ax = i; ay = 7; bx = i; by = 6; break;
-                default:          ax = i; ay = 0; bx = i; by = 1; break;
-                }
                 for (int k = 0; k < 3; k++)
-                    e[k] = 0.7f * (2 * turned[ay * 8 + ax][k] + turned[by * 8 + bx][k]) / 3;
+                    e[k] = shape ? 0.8f * turned[ay * 8 + ax][k]      /* as the gallery shows it */
+                                 : 0.7f * (2 * turned[ay * 8 + ax][k] + turned[by * 8 + bx][k]) / 3;
             } else if (look->edge == EDGEMODE_BREATHE) {
                 float c[3];
-                palette(look, r->pal_phase, 0.15f * s + 0.02f * i, c);
+                if (shape) {
+                    double d[3];
+                    viz_shape_colour(look->k.color, 0, ax, ay, d);
+                    for (int k = 0; k < 3; k++) c[k] = (float)(d[k] / 255);
+                } else {
+                    viz_organic_look_t L = { k_org_color[look->k.color >= 0 && look->k.color < SHAPE_COLORS ? look->k.color : 0],
+                                             0, 0, 0, 0, 0, 0 };
+                    palette(&L, r->pal_phase, 0.15f * s + 0.02f * i, c);
+                }
                 float b = 0.12f + 0.6f * expf(-io.beat_phase * 5.0f) * (0.4f + 0.6f * (f->sound ? f->level : 0.6f));
                 for (int k = 0; k < 3; k++) e[k] = c[k] * b;
             } else {

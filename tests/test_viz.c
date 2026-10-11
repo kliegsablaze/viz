@@ -361,77 +361,107 @@ static void test_listening(void) {
 
 /* ---- scenes ----------------------------------------------------------- */
 
-static void test_scenes(void) {
+/* Ten minutes of features at 30 frames a second, made once and shared by
+ * every scene: music for five minutes with Move playing for the first two,
+ * then five of silence. */
+#define FEAT_FRAMES (600 * VIZ_FPS)
+static viz_features_t *feature_track(void) {
+    static viz_features_t *ft;
+    if (ft) return ft;
+    ft = malloc(sizeof *ft * FEAT_FRAMES);
     int16_t io[VIZ_BLOCK * 2];
+    viz_listen_t l;
+    viz_features_t f;
+    viz_listen_init(&l);
+    synth_t s = { 0, 11 };
+    int acc = 0, n = 0;
+    while (n < FEAT_FRAMES) {
+        if (s.t < 300) music_block(&s, io, 1, 1, 1);
+        else { memset(io, 0, sizeof io); s.t += (double)VIZ_BLOCK / VIZ_SR; }
+        double beat = s.t < 120 ? s.t * 2 : -1;
+        viz_listen_block(&l, io, VIZ_BLOCK, beat, 120, 4, MODE_AUTO, &f);
+        acc += VIZ_BLOCK;
+        if (acc >= VIZ_SR / VIZ_FPS) { acc -= VIZ_SR / VIZ_FPS; ft[n++] = f; }
+    }
+    return ft;
+}
+
+static viz_look_t base_look(int scene) {
+    viz_look_t look = { .scene = scene, .k = { 2, 2, 1, 1, 0, 1, 1 }, .light = 0.8f, .edge = EDGEMODE_GLOW,
+                        .edge_weight = 2, .edge_sides = 15 };
+    return look;
+}
+
+static void test_scenes(void) {
+    const viz_features_t *ft = feature_track();
     viz_frame_t fr;
+    double worst_ms = 0;
     for (int sc = 0; sc < SCENE_COUNT; sc++) {
-        viz_look_t look = { .scene = sc, .color = sc % COLOR_COUNT, .flow = 0.5f, .grow = 0.5f, .bloom = 0.4f,
-                            .react = 0.6f, .warp = 0.4f, .drift = 0.3f, .light = 0.8f, .edge = EDGEMODE_GLOW,
-                            .edge_weight = 2, .edge_sides = 15 };
+        viz_look_t look = base_look(sc);
         for (int extreme = 0; extreme < 2; extreme++) {
-            if (extreme) { look.flow = look.grow = look.bloom = look.react = look.warp = look.drift = 1; }
+            if (extreme) look.k = (viz_shape_knobs_t){ 8, 4, 3, 4, 4, 3, 4 };
             viz_render_t *r = viz_render_new(42);
-            viz_listen_t l;
-            viz_features_t f;
-            viz_listen_init(&l);
-            synth_t s = { 0, 11 };
-            int acc = 0, black_run = 0, worst_black = 0, nonfinite = 0;
+            int black_run = 0, worst_black = 0, nonfinite = 0;
             double ms = 0;
-            long frames = 0;
-            /* five minutes of music, then five of silence, Move playing for the first two */
-            for (long b = 0; b < (long)(600.0 * VIZ_SR / VIZ_BLOCK); b++) {
-                int music = s.t < 300;
-                if (music) music_block(&s, io, 1, 1, 1);
-                else { memset(io, 0, sizeof io); s.t += (double)VIZ_BLOCK / VIZ_SR; }
-                double beat = s.t < 120 ? s.t * 2 : -1;
-                viz_listen_block(&l, io, VIZ_BLOCK, beat, 120, 4, MODE_AUTO, &f);
-                acc += VIZ_BLOCK;
-                if (acc >= VIZ_SR / VIZ_FPS) {
-                    acc -= VIZ_SR / VIZ_FPS;
-                    clock_t c0 = clock();
-                    viz_render_frame(r, &look, &f, 1.0f / VIZ_FPS, &fr);
-                    ms += (double)(clock() - c0) * 1000.0 / CLOCKS_PER_SEC;
-                    frames++;
-                    int any = 0;
-                    for (int i = 0; i < NLIGHT; i++) any |= fr.rgb[i][0] | fr.rgb[i][1] | fr.rgb[i][2];
-                    black_run = any ? 0 : black_run + 1;
-                    if (black_run > worst_black) worst_black = black_run;
+            for (int n = 0; n < FEAT_FRAMES; n++) {
+                clock_t c0 = clock();
+                viz_render_frame(r, &look, &ft[n], 1.0f / VIZ_FPS, &fr);
+                ms += (double)(clock() - c0) * 1000.0 / CLOCKS_PER_SEC;
+                int any = 0;
+                for (int i = 0; i < NLIGHT; i++) any |= fr.rgb[i][0] | fr.rgb[i][1] | fr.rgb[i][2];
+                /* a scene may rest in silence, never while the music plays */
+                if (n < 300 * VIZ_FPS) { black_run = any ? 0 : black_run + 1; if (black_run > worst_black) worst_black = black_run; }
+                if (sc >= SCENE_ORGANIC) {
                     const float *fld = viz_render_field_rgb(r);
                     for (int i = 0; i < FIELD * FIELD * 3; i += 97) if (!isfinite(fld[i])) nonfinite++;
                 }
             }
             CHECK(nonfinite == 0, "%s: %d non-finite field values", viz_scene_names[sc], nonfinite);
-            CHECK(worst_black <= 2 * VIZ_FPS, "%s%s: all black for %.1f s", viz_scene_names[sc],
+            CHECK(worst_black <= 2 * VIZ_FPS, "%s%s: all black for %.1f s while the music plays", viz_scene_names[sc],
                   extreme ? " (all knobs max)" : "", (double)worst_black / VIZ_FPS);
-            CHECK(ms / frames < 4.0, "%s: %.2f ms a frame on this machine", viz_scene_names[sc], ms / frames);
-            if (!extreme) printf("  %-9s %.3f ms/frame\n", viz_scene_names[sc], ms / frames);
+            CHECK(ms / FEAT_FRAMES < 4.0, "%s: %.2f ms a frame on this machine", viz_scene_names[sc], ms / FEAT_FRAMES);
+            if (ms / FEAT_FRAMES > worst_ms) worst_ms = ms / FEAT_FRAMES;
             viz_render_free(r);
         }
     }
+    printf("  %d scenes, at most %.3f ms a frame\n", SCENE_COUNT, worst_ms);
+
+    /* Every Look knob visibly changes the picture (the user, 2026-10-10: the
+     * controls must have a tangible effect). Rings, 8 s, one knob at a time. */
+    static const int other[7] = { 7, 4, 3, 0, 1, 0, 3 };   /* Mono, 1/16, 4, Off, Sides, Hold, Flash */
+    static const char *const kname[7] = { "COLOR", "RATE", "SIZE", "TRAIL", "FOLD", "SHIFT", "REACT" };
+    static uint8_t ref[8 * VIZ_FPS][NPAD][3];
+    for (int knob = -1; knob < 7; knob++) {
+        viz_look_t look = base_look(1);   /* Rings */
+        int *kv = &look.k.color;
+        if (knob >= 0) kv[knob] = other[knob];
+        viz_render_t *r = viz_render_new(42);
+        long differ = 0;
+        for (int n = 0; n < 8 * VIZ_FPS; n++) {
+            viz_render_frame(r, &look, &ft[n], 1.0f / VIZ_FPS, &fr);
+            if (knob < 0) memcpy(ref[n], fr.rgb, sizeof ref[n]);
+            else differ += memcmp(ref[n], fr.rgb, sizeof ref[n]) != 0;
+        }
+        if (knob >= 0) CHECK(differ > 2 * VIZ_FPS, "%s barely changes Rings: %ld of %d frames differ", kname[knob], differ, 8 * VIZ_FPS);
+        viz_render_free(r);
+    }
 
     /* Bit-identical from a fixed seed. */
-    viz_look_t look = { .scene = SCENE_FIREFLIES, .color = 3, .flow = 0.5f, .grow = 0.5f, .bloom = 0.4f,
-                        .react = 0.6f, .warp = 0.4f, .drift = 0.3f, .light = 0.8f, .edge = EDGEMODE_GLOW,
-                        .edge_weight = 2, .edge_sides = 15 };
-    viz_frame_t a, b;
-    viz_render_t *r1 = viz_render_new(7), *r2 = viz_render_new(7);
-    viz_listen_t l;
-    viz_features_t f;
-    viz_listen_init(&l);
-    synth_t s = { 0, 13 };
-    int same = 1;
-    for (int k = 0; k < 2000; k++) {
-        music_block(&s, io, 1, 1, 0);
-        viz_listen_block(&l, io, VIZ_BLOCK, s.t * 2, 120, 4, MODE_AUTO, &f);
-        if (k % 12 == 0) {
-            viz_render_frame(r1, &look, &f, 1.0f / VIZ_FPS, &a);
-            viz_render_frame(r2, &look, &f, 1.0f / VIZ_FPS, &b);
+    static const int seeded[3] = { 3 /* Burst */, 25 /* Stack */, SCENE_FIREFLIES };
+    for (int q = 0; q < 3; q++) {
+        viz_look_t look = base_look(seeded[q]);
+        viz_frame_t a, b;
+        viz_render_t *r1 = viz_render_new(7), *r2 = viz_render_new(7);
+        int same = 1;
+        for (int n = 0; n < 60 * VIZ_FPS; n++) {
+            viz_render_frame(r1, &look, &ft[n], 1.0f / VIZ_FPS, &a);
+            viz_render_frame(r2, &look, &ft[n], 1.0f / VIZ_FPS, &b);
             if (memcmp(a.rgb, b.rgb, sizeof a.rgb)) same = 0;
         }
+        CHECK(same, "%s: two renders from one seed differ", viz_scene_names[look.scene]);
+        viz_render_free(r1);
+        viz_render_free(r2);
     }
-    CHECK(same, "two renders from one seed differ");
-    viz_render_free(r1);
-    viz_render_free(r2);
 }
 
 /* ---- controls --------------------------------------------------------- */
@@ -468,7 +498,8 @@ static void test_controls(const char *dir) {
 
     api->set_param(v, "scene", "Lava");
     api->set_param(v, "color", "3");
-    api->set_param(v, "flow", "0.25");
+    api->set_param(v, "rate", "1/16");
+    api->set_param(v, "fold", "Eight");
     api->set_param(v, "mode", "Blend");
     api->set_param(v, "nudge", "-75");
     api->set_param(v, "turn", "180");
@@ -482,7 +513,9 @@ static void test_controls(const char *dir) {
     CHECK(!strcmp(st, st2), "state does not round-trip:\n  %s\n  %s", st, st2);
     char buf[64];
     api->get_param(w, "scene", buf, sizeof buf);  CHECK(!strcmp(buf, "Lava"), "scene %s", buf);
-    api->get_param(w, "color", buf, sizeof buf);  CHECK(!strcmp(buf, "Moss"), "color %s", buf);
+    api->get_param(w, "color", buf, sizeof buf);  CHECK(!strcmp(buf, "Sunset"), "color %s", buf);
+    api->get_param(w, "rate", buf, sizeof buf);   CHECK(!strcmp(buf, "1/16"), "rate %s", buf);
+    api->get_param(w, "fold", buf, sizeof buf);   CHECK(!strcmp(buf, "Eight"), "fold %s", buf);
     api->get_param(w, "nudge", buf, sizeof buf);  CHECK(!strcmp(buf, "-75"), "nudge %s", buf);
     api->get_param(w, "light", buf, sizeof buf);  CHECK(atof(buf) == 1.0, "light %s", buf);
     api->get_param(w, "grid", buf, sizeof buf);   CHECK(!strcmp(buf, "LP Pro MK3"), "grid %s", buf);

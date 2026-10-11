@@ -34,7 +34,7 @@
 
 enum { PT_ENUM, PT_PCT, PT_INT };
 enum {
-    P_SCENE, P_COLOR, P_FLOW, P_GROW, P_BLOOM, P_REACT, P_WARP, P_DRIFT,
+    P_SCENE, P_COLOR, P_RATE, P_SIZE, P_TRAIL, P_FOLD, P_SHIFT, P_REACT,
     P_MODE, P_POWER, P_LIGHT, P_GRID, P_CYCLE, P_TURN, P_EDGE, P_NUDGE, P_COUNT
 };
 
@@ -56,14 +56,14 @@ typedef struct {
 /* name: the held-knob header, spelled out. cell: the knob's own word, at most
  * five letters, a real word (DESIGN.md, Control surface). */
 static const pdef_t k_params[P_COUNT] = {
-    { "scene", "Scene",            "SCENE", PT_ENUM, viz_scene_names, SCENE_COUNT, 0, 0, 0, NULL },
-    { "color", "Colour family",    "COLOR", PT_ENUM, viz_color_names, COLOR_COUNT, 0, 0, 0, NULL },
-    { "flow",  "Flow speed",       "FLOW",  PT_PCT,  NULL, 0, 0, 1, 0.5f, NULL },
-    { "grow",  "Detail",           "GROW",  PT_PCT,  NULL, 0, 0, 1, 0.5f, NULL },
-    { "bloom", "Glow and trails",  "BLOOM", PT_PCT,  NULL, 0, 0, 1, 0.4f, NULL },
-    { "react", "Reaction",         "REACT", PT_PCT,  NULL, 0, 0, 1, 0.6f, NULL },
-    { "warp",  "Warp",             "WARP",  PT_PCT,  NULL, 0, 0, 1, 0.4f, NULL },
-    { "drift", "Evolution speed",  "DRIFT", PT_PCT,  NULL, 0, 0, 1, 0.3f, NULL },
+    { "scene",  "Scene",             "SCENE", PT_ENUM, viz_scene_names, SCENE_COUNT, 0, 0, 0, NULL },
+    { "color",  "Colour set",        "COLOR", PT_ENUM, viz_shape_color_names, SHAPE_COLORS, 0, 0, 2, NULL },
+    { "rate",   "Steps, on the beat", "RATE", PT_ENUM, viz_shape_rate_names, SHAPE_RATES, 0, 0, 2, NULL },
+    { "size",   "Shape size (pads)", "SIZE",  PT_ENUM, viz_shape_size_names, SHAPE_SIZES, 0, 0, 1, NULL },
+    { "trail",  "Trail length",      "TRAIL", PT_ENUM, viz_shape_trail_names, SHAPE_TRAILS, 0, 0, 1, NULL },
+    { "fold",   "Mirror fold",       "FOLD",  PT_ENUM, viz_shape_mirror_names, SHAPE_MIRRORS, 0, 0, 0, NULL },
+    { "shift",  "Colour swap",       "SHIFT", PT_ENUM, viz_shape_shift_names, SHAPE_SHIFTS, 0, 0, 1, NULL },
+    { "react",  "Kick reaction",     "REACT", PT_ENUM, viz_shape_react_names, SHAPE_REACTS, 0, 0, 1, NULL },
     { "mode",  "Sync mode",        "MODE",  PT_ENUM, k_modes, 4, 0, 0, 0, NULL },
     { "power", "Power source",     "POWER", PT_ENUM, k_power, 2, 0, 0, 0, NULL },
     { "light", "Brightness",       "LIGHT", PT_PCT,  NULL, 0, 0, 1, 0.8f, NULL },
@@ -138,13 +138,13 @@ static void read_features(viz_t *s, viz_features_t *out) {
 static void build_look(viz_t *s, viz_look_t *L) {
     memset(L, 0, sizeof *L);
     L->scene = pint(s, P_SCENE);
-    L->color = pint(s, P_COLOR);
-    L->flow = pget(s, P_FLOW);
-    L->grow = pget(s, P_GROW);
-    L->bloom = pget(s, P_BLOOM);
-    L->react = pget(s, P_REACT);
-    L->warp = pget(s, P_WARP);
-    L->drift = pget(s, P_DRIFT);
+    L->k.color = pint(s, P_COLOR);
+    L->k.rate = pint(s, P_RATE);
+    L->k.size = pint(s, P_SIZE);
+    L->k.trail = pint(s, P_TRAIL);
+    L->k.mirror = pint(s, P_FOLD);
+    L->k.shift = pint(s, P_SHIFT);
+    L->k.react = pint(s, P_REACT);
     L->light = pget(s, P_LIGHT);
     L->hub = pint(s, P_POWER) == 1;
     L->turn = pint(s, P_TURN);
@@ -230,7 +230,7 @@ static int get_one(viz_t *s, int i, char *buf, int len) {
     return snprintf(buf, len, "%.3f", (double)pget(s, i));
 }
 
-/* state: {"scene":"Aurora","flow":0.500,...}. Parsed by hand: a value is a
+/* state: {"scene":"Rings","color":"Acid",...}. Parsed by hand: a value is a
  * quoted string or a number. */
 static void set_state(viz_t *s, const char *json) {
     for (int i = 0; i < P_COUNT; i++) {

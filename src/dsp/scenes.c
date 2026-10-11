@@ -1,9 +1,9 @@
 /*
- * scenes.c — the pictures (DESIGN.md, "Scenes").
+ * scenes.c — the six organic scenes (DESIGN.md, "Scenes": the extras at the
+ * end of the SCENE list, after the hundred in shapes.c).
  *
- * 0.1.0 carries six organic scenes (Aurora, Nebula, Tide, Fireflies, Reeds,
- * Lava), drawn on a 32x32 field that the renderer averages down to the pads,
- * and three Graphic ones (Bars, Pulse, Scanner), drawn straight at 8x8.
+ * Aurora, Nebula, Tide, Fireflies, Reeds and Lava are drawn on a 32x32 field
+ * that the renderer averages down to the pads.
  *
  * A scene writes a brightness and a gradient coordinate per sample; colour is
  * the renderer's job. Every scene reads the same inputs (viz_scene_io_t), so
@@ -17,10 +17,6 @@
 #include <string.h>
 
 #include "viz.h"
-
-const char *const viz_scene_names[SCENE_COUNT] = {
-    "Aurora", "Nebula", "Tide", "Fireflies", "Reeds", "Lava", "Bars", "Pulse", "Scanner"
-};
 
 #define TAU 6.2831853f
 #define F2 (FIELD * FIELD)
@@ -57,7 +53,7 @@ static void aurora_init(void *st, uint32_t *rng) { (void)rng; memset(st, 0, size
 static void aurora_render(void *st, viz_scene_io_t *io) {
     aurora_t *s = st;
     const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
+    const viz_organic_look_t *L = io->look;
     for (int b = 0; b < NBAND; b++) s->lift[b] = smooth(s->lift[b], f->band[b] * io->react, 5, io->rdt);
     s->shimmer = smooth(s->shimmer, f->hit[2] * io->react, 10, io->rdt);
     int n = 1 + (int)(L->grow * 2.0f + 0.5f);              /* one to three curtains */
@@ -105,7 +101,7 @@ static void nebula_init(void *st, uint32_t *rng) { (void)rng; memset(st, 0, size
 static void nebula_render(void *st, viz_scene_io_t *io) {
     nebula_t *s = st;
     const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
+    const viz_organic_look_t *L = io->look;
     s->push += io->new_hits[0] * io->react * 0.7f;
     s->push *= expf(-io->rdt * 2.5f);
     s->open = smooth(s->open, f->bright * io->react, 2, io->rdt);
@@ -149,7 +145,7 @@ static void tide_drop(tide_t *s, float cx, float cy, float amp, float rad) {
 static void tide_render(void *st, viz_scene_io_t *io) {
     tide_t *s = st;
     const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
+    const viz_organic_look_t *L = io->look;
     /* Where a stone lands follows the loudest band; the row is chance. */
     int loud = 0;
     for (int b = 1; b < NBAND; b++) if (f->band[b] > f->band[loud]) loud = b;
@@ -214,7 +210,7 @@ static void fireflies_init(void *st, uint32_t *rng) {
 static void fireflies_render(void *st, viz_scene_io_t *io) {
     fireflies_t *s = st;
     const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
+    const viz_organic_look_t *L = io->look;
     int n = 4 + (int)(L->grow * 12 + 0.5f);
     float hz = f->bpm > 20 ? f->bpm / 60.0f : 2.0f;
     float spread = 0.08f + 0.25f * L->warp;
@@ -279,7 +275,7 @@ static void reeds_init(void *st, uint32_t *rng) {
 static void reeds_render(void *st, viz_scene_io_t *io) {
     reeds_t *s = st;
     const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
+    const viz_organic_look_t *L = io->look;
     float rest = 0.25f + 0.08f * sinf(io->t * 0.7f);
     for (int k = 0; k < NBAND; k++) {
         float target = f->sound ? 0.12f + 0.85f * clampf(f->band[k] * (0.4f + io->react), 0, 1)
@@ -347,7 +343,7 @@ static void lava_init(void *st, uint32_t *rng) {
 static void lava_render(void *st, viz_scene_io_t *io) {
     lava_t *s = st;
     const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
+    const viz_organic_look_t *L = io->look;
     int n = 4 + (int)(L->grow * (LAVA_MAX - 4) + 0.5f);
     float bass = 0.5f * (f->band[0] + f->band[1]);
     float target = 1 + 0.45f * bass * io->react + 0.3f * f->hit[0] * io->react + 0.08f * breath(io, 4.0f);
@@ -394,99 +390,11 @@ static void lava_render(void *st, viz_scene_io_t *io) {
         }
 }
 
-/* ---- Graphic: Bars, the classic eight-band equalizer -------------------- */
-
-typedef struct { float lvl[8], peak[8], hold[8], flash; } bars_t;
-
-static void bars_init(void *st, uint32_t *rng) { (void)rng; memset(st, 0, sizeof(bars_t)); }
-
-static void bars_render(void *st, viz_scene_io_t *io) {
-    bars_t *s = st;
-    const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
-    float fall = 1.0f + 3.0f * (1 - L->bloom);          /* grid heights per second */
-    if (io->beat_tick) s->flash = 1;
-    s->flash *= expf(-io->rdt * 6);
-    for (int x = 0; x < 8; x++) {
-        float in = f->sound ? clampf(f->band[x] * (0.5f + io->react), 0, 1)
-                            : (0.5f + 0.4f * sinf(TAU * ((float)f->beat * 0.25f + x / 8.0f))) * breath(io, 2.0f);
-        float h = in * 8;
-        s->lvl[x] = h > s->lvl[x] ? h : fmaxf(h, s->lvl[x] - fall * 2 * io->rdt);
-        if (s->lvl[x] >= s->peak[x]) { s->peak[x] = s->lvl[x]; s->hold[x] = 0.4f; }
-        else if ((s->hold[x] -= io->rdt) < 0) s->peak[x] = fmaxf(s->lvl[x], s->peak[x] - fall * io->rdt);
-        for (int row = 0; row < 8; row++) {            /* row 0 is the bottom */
-            int y = 7 - row;
-            float lit = clampf(s->lvl[x] - row, 0, 1);
-            float I = lit, C = 0.08f + 0.09f * row;
-            int pk = (int)floorf(s->peak[x] - 0.001f);
-            if (pk == row && s->peak[x] > 0.5f) { I = fmaxf(I, 0.9f + 0.4f * s->flash); C = 0.85f; }
-            io->inten[y * 8 + x] = I + 0.03f;
-            io->coord[y * 8 + x] = C + 0.03f * L->warp * sinf(io->t + x);
-        }
-    }
-}
-
-/* ---- Graphic: Pulse, the whole grid breathes ----------------------------- */
-
-typedef struct { float kick; float beats; } pulse_t;
-
-static void pulse_init(void *st, uint32_t *rng) { (void)rng; memset(st, 0, sizeof(pulse_t)); }
-
-static void pulse_render(void *st, viz_scene_io_t *io) {
-    pulse_t *s = st;
-    const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
-    s->kick = fmaxf(s->kick * expf(-io->rdt * 7), f->hit[0] * io->react);
-    if (io->beat_tick) s->beats += 1;
-    float b = breath(io, 2.5f + 4.0f * (1 - L->bloom));
-    float floor_ = 0.03f + 0.25f * f->level * io->react;
-    float fall = 0.5f + 0.5f * L->warp;
-    for (int y = 0; y < 8; y++)
-        for (int x = 0; x < 8; x++) {
-            float dx = (x - 3.5f) / 4.95f, dy = (y - 3.5f) / 4.95f;
-            float r2 = dx * dx + dy * dy;
-            float I = floor_ + (0.65f * b + 0.6f * s->kick) * (1 - fall * r2);
-            io->inten[y * 8 + x] = I;
-            io->coord[y * 8 + x] = 0.13f * s->beats + 0.25f * sqrtf(r2) + 0.1f * L->grow * b;
-        }
-}
-
-/* ---- Graphic: Scanner, a column sweeping across, one per 16th ------------ */
-
-typedef struct { float trail[64]; } scanner_t;
-
-static void scanner_init(void *st, uint32_t *rng) { (void)rng; memset(st, 0, sizeof(scanner_t)); }
-
-static void scanner_render(void *st, viz_scene_io_t *io) {
-    scanner_t *s = st;
-    const viz_features_t *f = io->f;
-    const viz_look_t *L = io->look;
-    float decay = expf(-io->rdt / (0.06f + 0.5f * L->bloom));
-    for (int i = 0; i < 64; i++) s->trail[i] *= decay;
-    long step = (long)floor(f->beat * 4);
-    int col = (int)(((step % 16) + 16) % 16);
-    col = col < 8 ? col : 15 - col;                  /* across and back over a bar of 16ths */
-    float h = f->sound ? 2 + 6 * clampf(f->band[col] * (0.5f + io->react), 0, 1) : 8;
-    for (int row = 0; row < 8; row++) {
-        float lit = clampf(h - row, 0, 1);
-        int i = (7 - row) * 8 + col;
-        if (lit > s->trail[i]) s->trail[i] = lit;
-    }
-    for (int y = 0; y < 8; y++)
-        for (int x = 0; x < 8; x++) {
-            io->inten[y * 8 + x] = 0.03f + s->trail[y * 8 + x];
-            io->coord[y * 8 + x] = 0.2f + 0.07f * x + 0.05f * L->grow * (7 - y);
-        }
-}
-
-const viz_scene_t viz_scenes[SCENE_COUNT] = {
-    { "Aurora",    0, aurora_init,    aurora_render },
-    { "Nebula",    0, nebula_init,    nebula_render },
-    { "Tide",      0, tide_init,      tide_render },
-    { "Fireflies", 0, fireflies_init, fireflies_render },
-    { "Reeds",     0, reeds_init,     reeds_render },
-    { "Lava",      0, lava_init,      lava_render },
-    { "Bars",      1, bars_init,      bars_render },
-    { "Pulse",     1, pulse_init,     pulse_render },
-    { "Scanner",   1, scanner_init,   scanner_render },
+const viz_scene_t viz_organic[ORGANIC_COUNT] = {
+    { "Aurora",    aurora_init,    aurora_render },
+    { "Nebula",    nebula_init,    nebula_render },
+    { "Tide",      tide_init,      tide_render },
+    { "Fireflies", fireflies_init, fireflies_render },
+    { "Reeds",     reeds_init,     reeds_render },
+    { "Lava",      lava_init,      lava_render },
 };
