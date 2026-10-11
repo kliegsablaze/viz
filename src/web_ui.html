@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viz</title>
+<!--
+  Viz's Remote UI page (DESIGN.md, "The Remote UI page"): the 8x8 picture and
+  nothing else. Viz keeps the current frame in live.bin beside this page
+  (viz.c, live_tick); the page fetches it about 30 times a second. The knobs
+  stay on the Move, and in the Remote UI under Interface: Default.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #000; }
+  body { display: flex; justify-content: center; align-items: center; }
+  canvas { display: block; width: 100%; max-width: 560px; aspect-ratio: 1; }
+  body.full { height: 100vh; overflow: hidden; }
+  body.full canvas { width: min(100vw, 100vh); max-width: none; }
+  #wait { position: absolute; color: #555; font: 13px system-ui, sans-serif; display: none; }
+</style>
+</head><body>
+<canvas id="c" aria-label="Viz light show"></canvas>
+<div id="wait">Waiting for Viz…</div>
+<script src="/static/schwung-remote-api.js"></script>
+<script>
+(function () {
+  "use strict";
+  if (window.top === window) document.body.classList.add("full");   // the pop-out
+  var cv = document.getElementById("c"), ctx = cv.getContext("2d");
+  var wait = document.getElementById("wait");
+  var glow = document.createElement("canvas"), gx = glow.getContext("2d");
+  var pads = null, lastSeq = -1, misses = 0;
+
+  function size() {
+    var px = Math.round(cv.getBoundingClientRect().width * (window.devicePixelRatio || 1));
+    if (px > 0 && cv.width !== px) { cv.width = cv.height = px; draw(); }
+  }
+
+  // A pad: a rounded square, like the Matrix's, with its light bleeding out.
+  function draw() {
+    var n = cv.width;
+    if (!n) return;
+    var cell = n / 8.6, gap = cell * 0.14, off = cell * 0.3;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, n, n);
+    if (glow.width !== n) glow.width = glow.height = n;
+    gx.clearRect(0, 0, n, n);
+    for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) {
+      var i = (y * 8 + x) * 3, r = 0, g = 0, b = 0;
+      if (pads) { r = pads[i]; g = pads[i + 1]; b = pads[i + 2]; }
+      var px = off + x * cell + gap / 2, py = off + y * cell + gap / 2, w = cell - gap;
+      var lit = r + g + b > 6;
+      ctx.fillStyle = lit ? "rgb(" + r + "," + g + "," + b + ")" : "#0d0d0d";
+      ctx.beginPath();
+      ctx.roundRect(px, py, w, w, w * 0.12);
+      ctx.fill();
+      if (lit) { gx.fillStyle = ctx.fillStyle; gx.fillRect(px, py, w, w); }
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.55;
+    ctx.filter = "blur(" + Math.round(cell * 0.35) + "px)";
+    ctx.drawImage(glow, 0, 0);
+    ctx.restore();
+  }
+
+  // One fetch at a time, about every 33 ms; none while the page is hidden.
+  function next(delay) { setTimeout(poll, delay); }
+  function poll() {
+    if (document.hidden) return next(500);
+    var t0 = performance.now();
+    fetch("live.bin?t=" + Date.now(), { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      var a = new Uint8Array(buf);
+      if (a.length < 12 + 192 || a[0] !== 86 || a[1] !== 73 || a[2] !== 90) throw new Error("bad frame");
+      misses = 0;
+      wait.style.display = "none";
+      var seq = a[4] | a[5] << 8 | a[6] << 16 | a[7] << 24;
+      if (seq !== lastSeq) { lastSeq = seq; pads = a.subarray(12, 12 + 192); draw(); }
+      next(Math.max(0, 33 - (performance.now() - t0)));
+    }).catch(function () {
+      // Not loaded, or between frames: after a second of misses, say so.
+      if (++misses > 6 && pads) { pads = null; draw(); }
+      if (misses > 6) wait.style.display = "block";
+      next(250);
+    });
+  }
+
+  if (window.ResizeObserver) new ResizeObserver(size).observe(cv); else window.addEventListener("resize", size);
+  size();
+  poll();
+})();
+</script>
+</body></html>

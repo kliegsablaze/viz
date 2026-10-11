@@ -477,3 +477,11 @@ void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_feature
         for (int k = 0; k < 3; k++) out->rgb[i][k] = (uint8_t)(v8[i][k] * scale);   /* floor: never over */
     out->seq++;
 }
+
+void viz_render_picture(const viz_render_t *r, uint8_t rgb[NLIGHT][3]) {
+    for (int i = 0; i < NLIGHT; i++)
+        for (int k = 0; k < 3; k++) {
+            float v = r->out[i][k];
+            rgb[i][k] = (uint8_t)((v < 0 ? 0 : v > 1 ? 1 : v) * 255.0f + 0.5f);
+        }
+}

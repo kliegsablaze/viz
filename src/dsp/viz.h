@@ -126,6 +126,9 @@ void viz_render_free(viz_render_t *r);
  * pads came from, for the preview (NULL-safe). */
 void viz_render_frame(viz_render_t *r, const viz_look_t *look, const viz_features_t *f,
                       float dt, viz_frame_t *out);
+/* The last frame before LIGHT and the power guard, 8-bit: the picture as the
+ * scene drew it, for a screen (the Remote UI page). */
+void viz_render_picture(const viz_render_t *r, uint8_t rgb[NLIGHT][3]);
 const float *viz_render_field_rgb(const viz_render_t *r);   /* FIELD*FIELD*3, 0..1 */
 
 /* ---- scenes (scenes.c) ---------------------------------------------------- */

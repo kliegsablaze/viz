@@ -23,6 +23,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include "host/audio_fx_api_v2.h"
 #include "host/plugin_api_v1.h"
@@ -167,6 +170,11 @@ typedef struct {
     atomic_int quit;
     int sync_acc;               /* tests: render in step with the audio instead */
 
+    /* The Remote UI page (render thread): live.bin in the module's folder. */
+    char live_path[480], live_tmp[488];
+    uint32_t live_seq;
+    double live_until;          /* watched until (CLOCK_MONOTONIC seconds) */
+
     /* MIDI diagnostics (audio thread writes, render thread logs every 2 s) */
     atomic_long md_calls, md_src[6], md_mbox, md_blocks;
     atomic_uint md_last[4];
@@ -272,6 +280,61 @@ static void midi_log(viz_t *s) {
     g_host->log(b);
 }
 
+/*
+ * The Remote UI page (src/web_ui.html, DESIGN.md "The Remote UI page").
+ * Schwung's manager serves any file in the module's folder to the browser, and
+ * has no other way to stream a Master FX's state, so the render thread keeps
+ * the picture in live.bin there and the page fetches it about 30 times a second.
+ *
+ * The folder is on the Move's flash, so Viz writes only while someone is
+ * reading: each write makes a new file (written beside it, then renamed, so a
+ * read never sees half a frame), and a read stamps its access time later than
+ * its change time (the /data mount is relatime). Unread for 2 s, Viz stops
+ * writing; the next read starts it again. Nobody watching costs one stat a frame.
+ *
+ * live.bin, 204 bytes: "VIZ1", the frame count (u32, little end), the LIGHT
+ * knob 0..255, three spare bytes, then the 64 pads, top row first, left to
+ * right, as R G B before LIGHT. The pads only: the page is the 8x8 picture,
+ * not the Matrix's underglow (the user, 2026-10-11).
+ */
+#define LIVE_BYTES (12 + NPAD * 3)
+#ifdef __APPLE__                /* the tests */
+#define st_atim st_atimespec
+#define st_mtim st_mtimespec
+#endif
+static double now_s(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + t.tv_nsec * 1e-9;
+}
+static void live_write(viz_t *s) {
+    uint8_t b[LIVE_BYTES];
+    memcpy(b, "VIZ1", 4);
+    uint32_t q = ++s->live_seq;
+    for (int i = 0; i < 4; i++) b[4 + i] = (uint8_t)(q >> (8 * i));
+    float light = pget(s, P_LIGHT);
+    b[8] = (uint8_t)(light * 255.0f + 0.5f);
+    b[9] = b[10] = b[11] = 0;
+    uint8_t rgb[NLIGHT][3];
+    viz_render_picture(s->r, rgb);
+    memcpy(b + 12, rgb, NPAD * 3);
+    int fd = open(s->live_tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return;
+    int ok = write(fd, b, sizeof b) == (ssize_t)sizeof b;
+    close(fd);
+    if (ok) rename(s->live_tmp, s->live_path);
+}
+static void live_tick(viz_t *s) {
+    if (!s->live_path[0]) return;
+    struct stat st;
+    double now = now_s();
+    if (stat(s->live_path, &st) != 0) { live_write(s); return; }   /* first frame, or removed */
+    if (st.st_atim.tv_sec > st.st_mtim.tv_sec ||
+        (st.st_atim.tv_sec == st.st_mtim.tv_sec && st.st_atim.tv_nsec > st.st_mtim.tv_nsec))
+        s->live_until = now + 2.0;
+    if (now < s->live_until) live_write(s);
+}
+
 static void *render_main(void *arg) {
     viz_t *s = arg;
     struct timespec next;
@@ -280,6 +343,7 @@ static void *render_main(void *arg) {
     while (!atomic_load(&s->quit)) {
         read_features(s, &f);
         render_one(s, &f);
+        live_tick(s);
         midi_log(s);
         next.tv_nsec += 1000000000L / VIZ_FPS;
         if (next.tv_nsec >= 1000000000L) { next.tv_nsec -= 1000000000L; next.tv_sec++; }
@@ -494,7 +558,6 @@ static int ui_hierarchy(char *buf, int len) {
 /* ---- v2 API --------------------------------------------------------------- */
 
 static void *v2_create_instance(const char *module_dir, const char *config_json) {
-    (void)module_dir;
     init_params();
     move_info_t mi;
     move_info_read(&mi);          /* the first call resolves the export; off the callback */
@@ -529,6 +592,10 @@ static void *v2_create_instance(const char *module_dir, const char *config_json)
     s->feat.bpm = 120;
     publish_features(s);
 
+    if (module_dir && module_dir[0] && strlen(module_dir) < sizeof s->live_path - 16) {
+        snprintf(s->live_path, sizeof s->live_path, "%s/live.bin", module_dir);
+        snprintf(s->live_tmp, sizeof s->live_tmp, "%s/.live.tmp", module_dir);
+    }
     int sync = config_json && strstr(config_json, "\"sync_render\"");
     if (!sync) {
         pthread_attr_t a;
@@ -549,6 +616,7 @@ static void v2_destroy_instance(void *inst) {
     if (!s) return;
     atomic_store(&s->quit, 1);
     if (s->threaded) pthread_join(s->thread, NULL);
+    if (s->threaded && s->live_path[0]) unlink(s->live_path);   /* the page then says Viz is gone */
     viz_render_free(s->r);
     free(s);
 }

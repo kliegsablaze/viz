@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "host/audio_fx_api_v2.h"
 #include "host/plugin_api_v1.h"
@@ -987,6 +990,59 @@ static void test_controls(const char *dir) {
     api->destroy_instance(w);
 }
 
+/* The Remote UI page's live.bin (viz.c, live_tick): the 8x8 pads; one frame on load, new
+ * frames only while something reads it, gone with the instance. */
+static void nap(int ms) { struct timespec d = { ms / 1000, ms % 1000 * 1000000L }; nanosleep(&d, NULL); }
+static int live_read(const char *path, uint8_t *b, uint32_t *seq) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    int n = (int)fread(b, 1, 12 + NPAD * 3, f);
+    fclose(f);
+    *seq = b[4] | b[5] << 8 | b[6] << 16 | (uint32_t)b[7] << 24;
+    return n;
+}
+static void stamp_read(const char *path) {     /* what a read does on a relatime mount */
+    struct timespec t[2] = { { 0, 0 }, { 0, UTIME_OMIT } };
+    clock_gettime(CLOCK_REALTIME, &t[0]);
+    t[0].tv_sec += 1;
+    utimensat(AT_FDCWD, path, t, 0);
+}
+static void test_live(const char *dir) {
+    char mod[400], path[480];
+    snprintf(mod, sizeof mod, "%s/live", dir);
+    mkdir(mod, 0755);
+    snprintf(path, sizeof path, "%s/live.bin", mod);
+    unlink(path);
+    void *v = api->create_instance(mod, "{\"seed\":3}");
+    api->set_param(v, "scene", "Pulse");
+    int16_t io[VIZ_BLOCK * 2] = { 0 };
+    for (int i = 0; i < 40; i++) { api->process_block(v, io, VIZ_BLOCK); nap(5); }
+    uint8_t b[12 + NPAD * 3];
+    uint32_t q0 = 0, q1 = 0, q2 = 0;
+    int n = live_read(path, b, &q0);
+    CHECK(n == 12 + NPAD * 3 && !memcmp(b, "VIZ1", 4), "live.bin: %d bytes on load", n);
+    CHECK(b[8] == 128, "live.bin carries LIGHT 50%% as 128, got %d", b[8]);
+    /* Our own read above counts as a viewer, for 2 s: wait that out, then
+     * watch the file by its inode (each frame is a new file) without reading. */
+    nap(2100);
+    struct stat a, c;
+    stat(path, &a);
+    for (int i = 0; i < 20; i++) { api->process_block(v, io, VIZ_BLOCK); nap(5); }
+    stat(path, &c);
+    CHECK(a.st_ino == c.st_ino, "nobody reading: live.bin still");
+    live_read(path, b, &q1);
+    stamp_read(path);
+    for (int i = 0; i < 30; i++) { api->process_block(v, io, VIZ_BLOCK); nap(5); }
+    live_read(path, b, &q2);
+    CHECK(q2 > q1 + 2, "read: live.bin moves (%u then %u)", q1, q2);
+    long lit = 0;
+    for (int i = 12; i < 12 + NPAD * 3; i++) lit += b[i];
+    CHECK(lit > 0, "live.bin holds a picture");
+    api->destroy_instance(v);
+    CHECK(access(path, F_OK) != 0, "live.bin goes with the instance");
+    printf("  live.bin: frame %u on load, %u after a read\n", q0, q2);
+}
+
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
     const char *dir = argc > 1 ? argv[1] : ".";
@@ -1011,6 +1067,7 @@ int main(int argc, char **argv) {
     printf("scenes\n");     test_scenes();
     printf("controls\n");   test_controls(dir);
     printf("sequence\n");   test_sequence();
+    printf("live\n");       test_live(dir);
 
     if (g_fail) { fprintf(stderr, "test_viz: %d FAILED\n", g_fail); return 1; }
     printf("test_viz: all passed\n");

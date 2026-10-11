@@ -20,7 +20,7 @@ else
 fi
 
 # help.json is what puts "Module Help" one jog from the controls.
-cp src/module.json src/help.json src/canvas.js LICENSE dist/viz/
+cp src/module.json src/help.json src/canvas.js src/web_ui.html LICENSE dist/viz/
 echo "Built dist/viz/"
 
 cd dist

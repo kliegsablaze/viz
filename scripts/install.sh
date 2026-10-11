@@ -19,7 +19,7 @@ fi
 # Copy beside, then rename. Never scp onto a live path: the shim has the .so
 # mapped while Viz sits in a slot, and rewriting it in place crashes Move.
 ssh "$HOST" "mkdir -p '$D/.new'"
-scp -q dist/viz/viz.so dist/viz/module.json dist/viz/help.json "$HOST:$D/.new/"
+scp -q dist/viz/viz.so dist/viz/module.json dist/viz/help.json dist/viz/canvas.js dist/viz/web_ui.html "$HOST:$D/.new/"
 ssh "$HOST" "cd '$D' && chmod 755 .new/viz.so && for f in .new/*; do mv -f \"\$f\" .; done && rmdir .new"
 echo "Installed to $HOST:$D"
 echo "A Viz already loaded keeps running the old code until it is reloaded."

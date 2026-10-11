@@ -3,7 +3,7 @@
 *Viz turns a Matrix into a light show for whatever the Move is playing: bold, geometric shapes
 in clear colours, stepping on the beat, with eight knobs you can play like an instrument.*
 
-**Status:** 0.1.0 built and installed. 2026-10-11: scenes in alphabetical order, a random scene at start, MODE Beat by default, Count counts to 4, FOLD keeps everything. On 2026-10-10 the user turned the show from organic
+**Status:** 0.1.0 built and installed. 2026-10-11: scenes in alphabetical order, a random scene at start, MODE Beat by default, Count counts to 4, FOLD keeps everything, page names padded clear of Schwung's automation mark, and a Remote UI page that shows the 8x8 picture in a browser (awaits a device pass). On 2026-10-10 the user turned the show from organic
 pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
 gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
 Sequence and Mod pages (now SEQ and MOD, before Settings) and the knob pictures were added,
@@ -22,7 +22,7 @@ wrong, and the design now follows the measurements:**
 - **Module ID:** `viz`
 - **Component type:** `audio_fx`, loaded in the **Master FX** row
 - **API:** plugin API v2 (`audio_fx_api_v2`), pure C, `ui_hierarchy` in `module.json`, no
-  JavaScript UI
+  JavaScript UI on the device; a Remote UI page (`web_ui.html`) that shows only the picture
 - **Versions:** start at 0.1.0. The whole design below working smoothly is **0.5.0**.
 
 ---
@@ -638,6 +638,39 @@ Matrix playing what the pages say.
   `viz.extra_keys` so the host polls it on the page's rotation.
 - A value that arrives as an index draws as the option it stands for.
 
+## The Remote UI page
+
+The user asked for Viz's pictures in Schwung's Remote UI (`http://move.local:7700/remote-ui`)
+with no controls: the 8x8 picture only, not the Matrix's underglow (2026-10-11). A module's
+`web_ui.html` replaces the generated knobs for its component there, a Master FX position
+included, and has a pop-out button for a window of its own; the knobs stay one toggle away
+(Interface: Default).
+
+**How the picture gets there.** For a Master FX the manager carries only values that a write
+announces, and checks the modules every 2 s (`remote_ui.go`, `pollMasterFx`); the page's
+"resubscribe" reloads the panel and re-reads every value, far too heavy to repeat 30 times a
+second. What the manager does serve is any file in the module's folder
+(`/api/remote-ui/module-assets/viz/…`, `main.go` `handleModuleWebUIAsset`; links out of the
+folder are refused). So the render thread keeps the frame in `live.bin` there and the page
+fetches it about 30 times a second (`viz.c`, `live_tick`).
+
+- **`live.bin`**, 204 bytes: `VIZ1`, the frame count (u32, little end), LIGHT 0..255, three
+  spare bytes, then the 64 pads top row first as R G B, *before* LIGHT and the power guard: a
+  screen needs no power limit, so the page shows the scene's own colours.
+- **Whole frames only.** Each frame is written beside the file and renamed over it, so a read
+  never sees half of one.
+- **Flash.** The folder is on the Move's flash, so Viz writes only while someone reads. A read
+  stamps the file's access time later than its change time (`/data` is mounted `relatime`);
+  the render thread checks with one `stat` a frame, writes while the file was read in the last
+  2 s, and stops when nobody reads. Removing Viz deletes the file, and the page then says
+  it is waiting for Viz.
+- **The page** (`src/web_ui.html`) draws the pads as the Matrix's rounded squares with a soft
+  glow, one fetch at a time, none while the tab is hidden; it fills the window when popped out.
+- **Cost, measured on the Move** (a static `live.bin`, the page polling): 29.7 fetches a
+  second, 12 ms each; the manager went from 3% to 5% of one core of four, Move's own process
+  unchanged at 79%.
+- Two Viz instances in Master FX would share one `live.bin`; the last to write wins.
+
 ---
 
 ## The light engine: how 8x8 becomes beautiful
@@ -1136,6 +1169,11 @@ palettes, even between SysEx packets)
   on Turn reaches all four turns.
 - Through the plugin: the user's defaults, `seq_now` at rest and playing, and the new keys
   round-tripping through `state` (STEP left out).
+
+**Remote UI page** (`test_live`, a real render thread in a scratch folder): `live.bin` holds
+a frame on load, stays still while nobody reads it, moves after a read, and goes with the
+instance. `plan.test.mjs` draws each page name with the host's header code and checks it
+ends left of the automation mark.
 
 **Pictures** (`tests/widgets.test.mjs`, through the host's own widget registry, frame and
 viz resolver)
