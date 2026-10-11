@@ -8,8 +8,12 @@
  * fill when most of the grid wants one colour. A light counts as shown only
  * when the last packet of its message was accepted; a refused packet is
  * retried on the next block, never skipped. Every light is re-sent at least
- * every 2 s, which heals pads Move's own MIDI out painted over and anything
- * lost across a replug.
+ * every 2 s, which heals anything lost across a replug.
+ *
+ * Move's own MIDI out goes to the grid too, and the Matrix paints any note on
+ * channels 1-6. Viz hears those notes as they leave (a Master FX gets them in
+ * on_midi, in the same block), so it covers each one at once and re-sends the
+ * light (viz_sender_midi).
  */
 #include <math.h>
 #include <stdlib.h>
@@ -261,4 +265,104 @@ void viz_sender_block(viz_sender_t *s, viz_send_fn send, void *ctx) {
         if (s->msg_pos >= s->msg_len) commit(s);
     }
     s->credit -= sent;
+}
+
+/* ---- Move's own notes --------------------------------------------------- */
+
+const uint8_t viz_matrix_palette[2][128][3] = {
+    {
+        {0,0,0}, {60,0,0}, {125,0,0}, {190,0,0}, {255,125,125}, {255,0,0}, {60,12,0}, {125,28,0},
+        {190,44,0}, {255,157,125}, {255,60,0}, {60,28,0}, {125,60,0}, {190,93,0}, {255,190,125}, {255,125,0},
+        {60,44,0}, {125,93,0}, {190,141,0}, {255,222,125}, {255,190,0}, {60,60,0}, {125,125,0}, {190,190,0},
+        {255,255,125}, {255,255,0}, {44,60,0}, {93,125,0}, {141,190,0}, {222,255,125}, {190,255,0}, {28,60,0},
+        {60,125,0}, {93,190,0}, {190,255,125}, {125,255,0}, {12,60,0}, {28,125,0}, {44,190,0}, {157,255,125},
+        {60,255,0}, {0,60,0}, {0,125,0}, {0,190,0}, {125,255,125}, {0,255,0}, {0,60,12}, {0,125,28},
+        {0,190,44}, {125,255,157}, {0,255,60}, {0,60,28}, {0,125,60}, {0,190,93}, {125,255,190}, {0,255,125},
+        {0,60,44}, {0,125,93}, {0,190,141}, {125,255,222}, {0,255,190}, {0,60,60}, {0,125,125}, {0,190,190},
+        {125,255,255}, {0,255,255}, {0,44,60}, {0,93,125}, {0,141,190}, {125,222,255}, {0,190,255}, {0,28,60},
+        {0,60,125}, {0,93,190}, {125,190,255}, {0,125,255}, {0,12,60}, {0,28,125}, {0,44,190}, {125,157,255},
+        {0,60,255}, {0,0,60}, {0,0,125}, {0,0,190}, {125,125,255}, {0,0,255}, {12,0,60}, {28,0,125},
+        {44,0,190}, {157,125,255}, {60,0,255}, {28,0,60}, {60,0,125}, {93,0,190}, {190,125,255}, {125,0,255},
+        {44,0,60}, {93,0,125}, {141,0,190}, {222,125,255}, {190,0,255}, {60,0,60}, {125,0,125}, {190,0,190},
+        {255,125,255}, {255,0,255}, {60,0,44}, {125,0,93}, {190,0,141}, {255,125,222}, {255,0,190}, {60,0,28},
+        {125,0,60}, {190,0,93}, {255,125,190}, {255,0,125}, {60,0,12}, {125,0,28}, {190,0,44}, {255,125,157},
+        {255,0,60}, {36,36,36}, {72,72,72}, {109,109,109}, {145,145,145}, {182,182,182}, {218,218,218}, {255,255,255},
+    },
+    {
+        {0,0,0}, {63,63,63}, {127,127,127}, {255,255,255}, {255,63,63}, {255,0,0}, {127,0,0}, {63,0,0},
+        {255,191,111}, {255,63,0}, {127,31,0}, {63,15,0}, {255,175,47}, {255,255,0}, {127,127,0}, {63,63,0},
+        {127,255,47}, {79,255,0}, {47,127,0}, {23,63,0}, {79,255,63}, {0,255,0}, {0,127,0}, {0,63,0},
+        {79,255,79}, {0,255,31}, {0,127,15}, {0,63,7}, {79,255,95}, {0,255,95}, {0,127,47}, {0,63,23},
+        {79,255,191}, {0,255,159}, {0,127,79}, {0,63,39}, {79,191,255}, {0,175,255}, {0,87,127}, {0,47,63},
+        {79,127,255}, {0,87,255}, {0,47,127}, {0,23,63}, {47,31,255}, {0,0,255}, {0,0,127}, {0,0,63},
+        {95,63,255}, {47,0,255}, {23,0,127}, {15,0,63}, {255,63,255}, {255,0,255}, {127,0,127}, {63,0,63},
+        {255,63,111}, {255,0,79}, {127,0,47}, {63,0,31}, {255,15,0}, {159,63,0}, {127,79,0}, {47,47,0},
+        {0,63,0}, {0,63,31}, {0,31,111}, {0,0,255}, {0,63,63}, {31,0,191}, {95,63,79}, {31,15,23},
+        {255,0,0}, {191,255,47}, {175,239,0}, {95,255,0}, {15,127,0}, {0,255,95}, {0,159,255}, {0,47,255},
+        {31,0,255}, {95,0,239}, {175,31,127}, {47,15,0}, {255,47,0}, {127,223,0}, {111,255,31}, {0,255,0},
+        {63,255,47}, {95,239,111}, {63,255,207}, {95,143,255}, {47,79,207}, {111,79,223}, {223,31,255}, {255,0,95},
+        {255,79,0}, {191,175,0}, {143,255,0}, {127,95,0}, {63,47,0}, {0,71,15}, {15,79,31}, {23,23,47},
+        {23,31,95}, {95,55,23}, {127,0,0}, {223,63,47}, {223,71,15}, {255,191,31}, {159,223,47}, {111,175,15},
+        {23,23,47}, {223,223,111}, {127,239,143}, {159,159,255}, {143,111,255}, {63,63,63}, {111,111,111}, {223,255,255},
+        {159,0,0}, {55,0,0}, {23,207,0}, {0,63,0}, {191,175,0}, {63,47,0}, {175,79,0}, {79,15,0},
+    },
+};
+
+int viz_grid_painted(int grid, const uint8_t msg[3]) {
+    int type = msg[0] & 0xF0, ch = msg[0] & 0x0F, n = msg[1];
+    if (type != 0x80 && type != 0x90 && type != 0xB0) return -1;
+    if (grid != GRID_MATRIX) {
+        if (ch > 2) return -1;
+        for (int id = 0; id < NLIGHT; id++) if (viz_grid_index(grid, id) == n) return id;
+        return -1;
+    }
+    if (ch > 5) return -1;                       /* Performance ignores 7-16 */
+    if (n >= 36 && n <= 99) {                    /* two 4-wide halves, bottom up */
+        int k = n < 68 ? n - 36 : n - 68;
+        return (n < 68 ? 0 : 4) + k % 4 + 8 * (7 - k / 4);
+    }
+    if (n >= 100 && n <= 107) return NPAD + EDGE_RIGHT * 8 + n - 100;
+    if (n >= 108 && n <= 115) return NPAD + EDGE_LEFT * 8 + n - 108;
+    if (n >= 116 && n <= 123) return NPAD + EDGE_BOTTOM * 8 + n - 116;
+    if (n >= 28 && n <= 35)   return NPAD + EDGE_TOP * 8 + n - 28;
+    return -1;
+}
+
+void viz_matrix_nearest(const uint8_t c[3], int *channel, int *velocity) {
+    int sum = c[0] + c[1] + c[2], best = -1, bc = 0, bv = 0;
+    for (int p = 0; p < 2; p++)
+        for (int v = 0; v < 128; v++) {
+            const uint8_t *q = viz_matrix_palette[p][v];
+            if (q[0] + q[1] + q[2] > sum) continue;
+            int d = (q[0] - c[0]) * (q[0] - c[0]) + (q[1] - c[1]) * (q[1] - c[1]) + (q[2] - c[2]) * (q[2] - c[2]);
+            if (best < 0 || d < best) { best = d; bc = p; bv = v; }
+        }
+    *channel = bc;
+    *velocity = bv;
+}
+
+#define COVERS_PER_BLOCK 4
+#define COVER_ECHO_BLOCKS 16
+
+void viz_sender_midi(viz_sender_t *s, const uint8_t msg[3], viz_send_fn send, void *ctx) {
+    for (int i = 0; i < 8; i++)
+        if (s->cover_block[i] && s->blocks - s->cover_block[i] <= COVER_ECHO_BLOCKS &&
+            !memcmp(s->cover[i], msg, 3)) return;          /* our own cover, echoed */
+    int id = viz_grid_painted(s->grid, msg);
+    if (id < 0 || !viz_grid_index(s->grid, id)) return;
+    s->known[id] = 0;                                       /* sent again, first */
+    if (s->grid != GRID_MATRIX) return;
+    if (s->covers_block != s->blocks) { s->covers_block = s->blocks; s->covers_this_block = 0; }
+    if (s->covers_this_block >= COVERS_PER_BLOCK) return;
+    int ch, vel;
+    viz_matrix_nearest(s->frame[id], &ch, &vel);
+    /* a note on of the light's own note: one packet, which the Matrix reads
+     * on its own even between the packets of a SysEx message */
+    uint8_t p[4] = { 0x29, (uint8_t)(0x90 | ch), msg[1], (uint8_t)vel };
+    if (!send(ctx, p)) return;
+    memcpy(s->cover[s->cover_next], p + 1, 3);
+    s->cover_block[s->cover_next] = s->blocks ? s->blocks : 1;
+    s->cover_next = (s->cover_next + 1) % 8;
+    s->covers_this_block++;
+    s->covers++;
 }

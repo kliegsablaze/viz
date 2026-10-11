@@ -6,7 +6,8 @@ in clear colours, stepping on the beat, with eight knobs you can play like an in
 **Status:** 0.1.0 built and installed. On 2026-10-10 the user turned the show from organic
 pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
 gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
-Sequence and Mod pages and the knob pictures were added; their device pass is next.
+Sequence and Mod pages and the knob pictures were added, and Viz now paints over the notes
+Move sends to the Matrix; their device pass is next.
 Written against Schwung **v1.7.3** and Matrix OS commit **e1a4c08** (2026-09-25); the user's
 Matrix runs Matrix OS **3.2**.
 
@@ -208,8 +209,8 @@ palettes are the fallback.
 - **Move's own MIDI out paints the Matrix.** With a drum clip playing (sequenced on a Move
   track, sounded by Strut in a Schwung slot), the bottom-left pads (notes 36–38) lit up in
   time with the drums: Move sends its track notes out of USB-A.
-  Viz therefore **repaints every light regularly**, not only changed ones (see *Sending*),
-  and help.json suggests turning off Move's MIDI output to USB-A.
+  Viz **covers each of those notes as it leaves** (see *Move's own notes*), so nothing needs
+  changing on the Move.
 - **Connecting can fail silently.** On the first plug-in, neither direction worked. A replug
   fixed it. There is no hotplug signal on USB-A, so Viz can't detect it; help.json says
   "if the Matrix stays dark, replug it".
@@ -228,10 +229,8 @@ palettes are the fallback.
 2. On the Matrix, open **Performance** (the red app). If nothing responds later, replug.
 3. Optional: turn on its **Menu Lock**, so a stray Fn press doesn't open the menu over the
    show.
-4. Stop Move's notes painting the pads: Move echoes each track's MIDI out to USB-A, and the
-   Matrix paints pads from notes on channels 1–6 (`NoteHandler`). Set each track's MIDI
-   output channel to **7 or higher**; where the track plays a Schwung module, set the
-   slot's **Recv Ch** to match.
+4. Leave Master FX **MIDI Ch** on **All** (the default), so Viz hears every note Move
+   sends to the Matrix and can paint over it (*Move's own notes*).
 5. To light up to Move's own instruments (not only Schwung modules), turn on Move→Schwung in
    Schwung's Global Settings.
 6. Load Viz into a Master FX position.
@@ -757,9 +756,8 @@ nothing more.
   sent**. A pad believed lit but never sent would stay wrong forever; the same rule as
   `knob_emit_cc_out` (`chain_params.c:1075-1086`).
 - **Refresh: every light is re-sent at least every 2 s**, a quarter of them every 0.5 s in
-  rotation. This heals pads that Move's own MIDI out painted over (measured: drum notes
-  36–38 lit the bottom-left pads), and any light the Matrix missed, for example across a
-  replug. There is no hotplug signal, and packets sent with nothing attached simply go
+  rotation. This heals any light the Matrix missed, for example across a replug, and any
+  Move note Viz didn't hear (*Move's own notes*). There is no hotplug signal, and packets sent with nothing attached simply go
   nowhere.
 - **Lights off: only through LIGHT.** Bypassing a Master FX doesn't stop it: Schwung still
   calls `process_block` and only restores the dry audio afterwards
@@ -772,6 +770,34 @@ nothing more.
   (`schwung_shim.c:2105`) after they were counted as sent. A SysEx message cut in half
   times out on the Matrix after 1 s (`OS/MIDI/MIDI.cpp:11`), and the refresh repaints
   whatever was lost within 2 s.
+
+### Move's own notes
+
+Move sends each track's notes out of USB-A, and the Matrix's Performance app paints a pad
+for any Note On, Note Off or CC on channels 1–6 (`Performance8x8.cpp:158-192`), whatever
+the port. Left alone, drums blink pads under the show until the refresh comes round.
+
+Viz hears those notes as they leave. The shim scans Move's cable-2 MIDI_OUT before each
+transfer and hands every note to the Master FX `on_midi` as EXTERNAL
+(`schwung_shim.c:1478-1640`, `shadow_midi.c:430-435`). It drains the external ring
+afterwards in the same function (`:7183`, `:7710`), so a packet Viz queues inside `on_midi`
+goes out **in the same USB transfer, after Move's note**. The Matrix handles both in one pass
+of its MIDI loop, before its next LED frame, so the note is never seen.
+
+- **The cover** is one Note On for the same note: the colour of the two Matrix palettes
+  nearest to what Viz is drawing there, and never brighter, so the power guard still holds.
+  Black, the usual case, is exact. One packet can go between the packets of a SysEx
+  message: Matrix OS keeps SysEx state per port and passes channel messages straight to
+  the app (`OS/MIDI/MIDI.cpp:120-200`).
+- **The exact colour** follows: the light is marked unknown, which puts it first in the
+  next message.
+- **Limits:** 4 covers a block (a burst beyond that waits for the re-send), and a cover
+  heard coming back is ignored, so Viz can't feed itself.
+- **What it can't see:** a note on a channel the Master FX **MIDI Ch** setting filters out.
+  Left on All (the default) Viz hears them all; otherwise the 2 s refresh heals the pad.
+- Move's own pads arrive as INTERNAL and never reach the grid, so they are ignored.
+- On a Launchpad (Programmer mode, notes on channels 1–3 paint the pad of that index) Viz
+  marks the light for re-sending but sends no cover; untested.
 
 ### TURN
 
@@ -865,10 +891,16 @@ step's (keys `s1_scene` … `s8_fold`).
   Sparkle, Split, Zigzag, Fill, Laser, Star, Bricks, Tiles, Marquee, Orbit, Frog, Rocks,
   Bolt, Signal, Fish, Triangle, Grid, Domino, Meter, Level, Ghost, Loader, Cube, Peaks,
   Simon, Cat, Notes, Blinds, Open, Golf, Pogo and Fountain.
-- **Filtering Move's notes inside Viz.** Move echoes a track's MIDI out to USB-A, and the
-  Matrix paints pads from notes on channels 1–6, so drums lit pads under the show. A Master
-  FX can't touch that stream; moving the track to channel 7 or higher fixes it with no code
-  (*Setting up the Matrix*).
+- **Moving Move's tracks to channel 7 or higher** (the first fix for Move's notes: the
+  Matrix ignores those channels). It works, but it costs a setting on every track and on
+  every Schwung slot's Recv Ch; covering the notes inside Viz (*Move's own notes*) costs
+  nothing.
+- **Deleting Move's notes from MIDI_OUT.** A Master FX gets the mailbox pointer, so it
+  could zero Move's packets before they ship. That reaches into Move's own output, which a
+  module has no business doing, and would also silence a synth the user put on USB-A.
+- **Only marking the light for re-sending.** The SysEx stream is mid-message most of the
+  time, so the exact repaint lands 10–60 ms late: a visible tick on every drum hit. The
+  one-packet cover closes that gap.
 - **Organic scenes leading, with icons as a side family** (the first design). The user's
   device verdict reversed it: geometric scenes lead.
 - **A JavaScript canvas or custom on-screen UI.** Fleet rule: knobs and the jog wheel only.
@@ -1039,6 +1071,16 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
   those rules a mostly-dark picture kept refilling the grid black and never drew its lit
   pads, and a bright flash pushed the underglow past the power budget for a frame.)
 - TURN rotates a known test frame correctly.
+
+**Move's notes** (`test_move_notes`; the fake Matrix paints channel messages from its
+palettes, even between SysEx packets)
+- The note map matches Performance's drum rack and edge; channel 7, pitch bend and Move's
+  own pads (INTERNAL) paint nothing and draw no cover.
+- A cover is never brighter than the light, and exact for any palette colour.
+- With the grid dark, 128 Move notes and note-offs on the drum pads are dark again within
+  their own transfer; with Pulse lit, every hit light is sent again by SysEx within 80 ms;
+  no SysEx message breaks.
+- At most 4 covers a block, and Viz's own cover echoed back draws none.
 
 **Listening**
 - A sine sweep raises the bands in order.

@@ -551,14 +551,21 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
     /* diagnostics, for tests and logs */
     if (!strcmp(key, "sent"))    return snprintf(buf, len, "%ld", s->sender.sent);
     if (!strcmp(key, "refused")) return snprintf(buf, len, "%ld", s->sender.refused);
+    if (!strcmp(key, "covers"))  return snprintf(buf, len, "%ld", s->sender.covers);
     if (!strcmp(key, "seq_now")) return seq_now(s, buf, len);
     int i = find_param(key);
     if (i >= 0) return get_one(s, i, buf, len);
     return -1;
 }
 
+/* Notes Move is sending out of USB-A this block (the shim hands a Master FX
+ * every cable-2 MIDI_OUT note as EXTERNAL, before the ext ring is drained into
+ * the same transfer). Move's own pads arrive as INTERNAL and never reach the
+ * grid. */
 static void v2_on_midi(void *inst, const uint8_t *msg, int len, int source) {
-    (void)inst; (void)msg; (void)len; (void)source;
+    viz_t *s = inst;
+    if (!s || !msg || len < 3 || source != MOVE_MIDI_SOURCE_EXTERNAL) return;
+    viz_sender_midi(&s->sender, msg, send_pkt, NULL);
 }
 
 audio_fx_api_v2_t *move_audio_fx_init_v2(const host_api_v1_t *host) {

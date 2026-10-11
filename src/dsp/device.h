@@ -55,12 +55,17 @@ typedef struct {
     int fl_n;
     int fl_fill;                /* the message is a fill: every present light takes fl_val[0] */
     double credit;
+    /* covers: one-packet repaints sent the moment Move's own MIDI out paints a light */
+    uint8_t cover[8][3];
+    long cover_block[8];
+    int cover_next, covers_this_block;
+    long covers_block;
     int refresh_cursor;
     long blocks;
     long next_refresh, next_setup;
     int setup_due;
     /* counters, for tests and logs */
-    long sent, refused, msgs;
+    long sent, refused, msgs, covers;
 } viz_sender_t;
 
 void viz_sender_init(viz_sender_t *s, int grid);
@@ -70,5 +75,21 @@ void viz_sender_set_grid(viz_sender_t *s, int grid);
 void viz_sender_frame(viz_sender_t *s, const viz_frame_t *f);
 /* One audio block: send what the budget allows. */
 void viz_sender_block(viz_sender_t *s, viz_send_fn send, void *ctx);
+
+/* The light a channel message paints on the grid (Matrix Performance: Note
+ * On, Note Off or CC on channels 1-6 through its drum-rack note map; a
+ * Launchpad in Programmer mode: channels 1-3, the note is the index), or -1. */
+int viz_grid_painted(int grid, const uint8_t msg[3]);
+/* Move sent msg out of USB-A, and it reaches the grid as well. If it paints a
+ * light, that light is sent again first thing; on the Matrix, a one-packet
+ * cover goes out at once too, so it lands in the same USB transfer as Move's
+ * note. Viz's own covers, coming back, are ignored. */
+void viz_sender_midi(viz_sender_t *s, const uint8_t msg[3], viz_send_fn send, void *ctx);
+/* The two Matrix palettes (channel 1: Matrix, channel 2: Launchpad X), from
+ * Matrix OS (MIT, 203 Systems), Applications/Performance/8x8/Performance8x8.h. */
+extern const uint8_t viz_matrix_palette[2][128][3];
+/* The palette colour nearest c that is no brighter (r+g+b) than c, as a
+ * channel (0, 1) and velocity. */
+void viz_matrix_nearest(const uint8_t c[3], int *channel, int *velocity);
 
 #endif

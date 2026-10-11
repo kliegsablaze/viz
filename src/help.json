@@ -48,16 +48,13 @@
         "plays the Move's",
         "selected track.",
         "",
-        "Drums lighting",
-        "pads? Set the Move",
-        "track's MIDI out",
-        "channel to 7 or",
-        "higher. The Matrix",
-        "ignores those.",
-        "If the track plays",
-        "a Schwung synth,",
-        "set its Recv Ch to",
-        "match."
+        "Move's notes go to",
+        "the grid too. Viz",
+        "paints over them",
+        "at once. If some",
+        "pads still blink,",
+        "set Master FX",
+        "MIDI Ch to All."
       ]
     },
     {

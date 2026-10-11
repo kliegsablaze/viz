@@ -86,12 +86,25 @@ static void on_message(const uint8_t *m, int n) {
     }
 }
 
+/* A channel message on the Matrix: Performance paints it from a palette, even
+ * between the packets of a SysEx message. */
+static long g_note_pkts;
+static void paint_note(const uint8_t m[3]) {
+    int id = viz_grid_painted(GRID_MATRIX, m);
+    if (id < 0 || g_grid != GRID_MATRIX) return;
+    int ch = m[0] & 15, vel = (m[0] & 0xF0) == 0x80 ? 0 : m[2];
+    const uint8_t *c = ch < 2 ? viz_matrix_palette[ch][vel] : (const uint8_t[3]){ 0, 0, 0 };
+    uint8_t *d = g_disp[viz_grid_index(GRID_MATRIX, id)];
+    for (int k = 0; k < 3; k++) d[k] = c[k] >> 2;
+}
+
 static int fake_send(const uint8_t *p, int len) {
     (void)len;
     g_calls++;
     if (g_refuse_every && g_calls % g_refuse_every == 0) return 0;
     if ((p[0] >> 4) != 2) g_bad_cable++;
     int cin = p[0] & 15, n = cin == 4 ? 3 : cin >= 5 && cin <= 7 ? cin - 4 : 0;
+    if (cin == 8 || cin == 9 || cin == 0xB) { g_note_pkts++; paint_note(p + 1); return 4; }
     if (!n) { g_bad_cable++; return 4; }
     for (int i = 0; i < n && g_sx_len < (int)sizeof g_sx; i++) {
         if (p[1 + i] == 0xF0) g_sx_len = 0;            /* a device restarts on F0 */
@@ -225,6 +238,130 @@ static void test_midi(void) {
     for (int id = 0; id < NLIGHT; id++) { uint8_t *c = g_disp[viz_grid_index(GRID_MATRIX, id)]; lit += c[0] || c[1] || c[2]; }
     CHECK(lit == 0, "LIGHT 0 left %d lights lit", lit);
     api->destroy_instance(v);
+}
+
+/* Move's own notes go out of USB-A to the Matrix as well. Viz covers each
+ * one in the same transfer, then sends the light again exactly. */
+static void move_note(void *v, uint8_t st, uint8_t note, uint8_t vel, int source) {
+    uint8_t m[3] = { st, note, vel };
+    if (source == MOVE_MIDI_SOURCE_EXTERNAL) paint_note(m);   /* Move's packet comes first */
+    api->on_midi(v, m, 3, source);
+}
+
+static uint8_t g_kept[4];
+static int keep(void *ctx, const uint8_t p[4]) { (void)ctx; memcpy(g_kept, p, 4); return 1; }
+
+static long covers(void *v) { char b[32]; api->get_param(v, "covers", b, sizeof b); return atol(b); }
+
+static void test_move_notes(void) {
+    /* the note map: Performance's drum rack, and the edge */
+    static const struct { uint8_t note; int id; } map[] = {
+        { 36, 56 }, { 39, 59 }, { 40, 48 }, { 67, 3 }, { 68, 60 }, { 99, 7 },
+        { 100, NPAD + EDGE_RIGHT * 8 }, { 115, NPAD + EDGE_LEFT * 8 + 7 },
+        { 116, NPAD + EDGE_BOTTOM * 8 }, { 35, NPAD + EDGE_TOP * 8 + 7 },
+    };
+    for (size_t i = 0; i < sizeof map / sizeof map[0]; i++) {
+        uint8_t m[3] = { 0x90, map[i].note, 100 };
+        CHECK(viz_grid_painted(GRID_MATRIX, m) == map[i].id, "note %d paints light %d, not %d",
+              map[i].note, viz_grid_painted(GRID_MATRIX, m), map[i].id);
+    }
+    uint8_t ch7[3] = { 0x96, 36, 100 }, ch6[3] = { 0x95, 36, 100 }, cc[3] = { 0xB0, 36, 5 }, pb[3] = { 0xE0, 36, 5 };
+    CHECK(viz_grid_painted(GRID_MATRIX, ch7) < 0, "channel 7 paints nothing on the Matrix");
+    CHECK(viz_grid_painted(GRID_MATRIX, ch6) == 56, "channel 6 paints");
+    CHECK(viz_grid_painted(GRID_MATRIX, cc) == 56, "a CC paints");
+    CHECK(viz_grid_painted(GRID_MATRIX, pb) < 0, "pitch bend paints nothing");
+
+    /* the cover colour: never brighter, exact for a palette colour */
+    uint32_t rng = 7;
+    int brighter = 0, inexact = 0;
+    for (int k = 0; k < 2000; k++) {
+        uint8_t c[3] = { (uint8_t)(viz_randf(&rng) * 255), (uint8_t)(viz_randf(&rng) * 255), (uint8_t)(viz_randf(&rng) * 255) };
+        int ch, vel;
+        viz_matrix_nearest(c, &ch, &vel);
+        const uint8_t *q = viz_matrix_palette[ch][vel];
+        brighter += q[0] + q[1] + q[2] > c[0] + c[1] + c[2];
+    }
+    for (int p = 0; p < 2; p++)
+        for (int v = 0; v < 128; v++) {
+            int ch, vel;
+            viz_matrix_nearest(viz_matrix_palette[p][v], &ch, &vel);
+            inexact += memcmp(viz_matrix_palette[ch][vel], viz_matrix_palette[p][v], 3) != 0;
+        }
+    CHECK(brighter == 0, "%d covers brighter than the light", brighter);
+    CHECK(inexact == 0, "%d palette colours not covered exactly", inexact);
+
+    synth_t s = { 0, 9 };
+    void *v = make();
+    reset_display(GRID_MATRIX);
+
+    /* All dark: every note Move plays on the drum pads is dark again within
+     * the same transfer. */
+    api->set_param(v, "light", "0");
+    run(v, &s, 1.0, 1, 1);
+    int shown = 0, hits = 0;
+    for (int k = 0; k < 64; k++) {
+        uint8_t note = (uint8_t)(36 + k % 16);
+        move_note(v, 0x90, note, (uint8_t)(5 + k % 100), MOVE_MIDI_SOURCE_EXTERNAL);
+        uint8_t m[3] = { 0x90, note, 1 };
+        uint8_t *d = g_disp[viz_grid_index(GRID_MATRIX, viz_grid_painted(GRID_MATRIX, m))];
+        shown += d[0] || d[1] || d[2];
+        hits++;
+        run(v, &s, 0.06, 1, 1);
+        move_note(v, 0x80, note, 64, MOVE_MIDI_SOURCE_EXTERNAL);
+        run(v, &s, 0.06, 1, 1);
+    }
+    CHECK(shown == 0, "%d of %d Move notes left showing past their transfer", shown, hits);
+    CHECK(g_bad_msg == 0, "covers broke %d SysEx messages", g_bad_msg);
+
+    /* Lit: each hit light is sent again, exactly, within 80 ms. */
+    api->set_param(v, "light", "1");
+    api->set_param(v, "scene", "Pulse");
+    run(v, &s, 1.0, 1, 1);
+    int late = 0;
+    for (int k = 0; k < 32; k++) {
+        uint8_t note = (uint8_t)(36 + (k * 5) % 64);
+        uint8_t m[3] = { 0x90, note, 1 };
+        int ix = viz_grid_index(GRID_MATRIX, viz_grid_painted(GRID_MATRIX, m));
+        long at = g_block;
+        move_note(v, 0x91, note, 3, MOVE_MIDI_SOURCE_EXTERNAL);
+        run(v, &s, 0.08, 1, 1);
+        late += g_last_sent[ix] <= at;
+    }
+    CHECK(late == 0, "%d of 32 hit lights not sent again within 80 ms", late);
+    CHECK(g_bad_msg == 0, "covers broke %d SysEx messages", g_bad_msg);
+
+    /* What doesn't reach the Matrix, or is Viz's own, draws no cover. */
+    long c0 = covers(v);
+    move_note(v, 0x96, 40, 100, MOVE_MIDI_SOURCE_EXTERNAL);    /* channel 7 */
+    move_note(v, 0x90, 70, 100, MOVE_MIDI_SOURCE_INTERNAL);    /* Move's own pad */
+    move_note(v, 0xE0, 40, 100, MOVE_MIDI_SOURCE_EXTERNAL);    /* pitch bend */
+    CHECK(covers(v) == c0, "%ld covers for messages that never reach the Matrix", covers(v) - c0);
+    g_note_pkts = 0;
+    move_note(v, 0x90, 41, 100, MOVE_MIDI_SOURCE_EXTERNAL);
+    CHECK(covers(v) == c0 + 1 && g_note_pkts == 1, "one Move note, %ld covers", covers(v) - c0);
+    run(v, &s, 0.01, 1, 1);
+    api->destroy_instance(v);
+
+    /* An echo: the very packet Viz sent comes back through on_midi. */
+    {
+        viz_sender_t snd;
+        viz_sender_init(&snd, GRID_MATRIX);
+        viz_frame_t f;
+        memset(&f, 0, sizeof f);
+        viz_sender_frame(&snd, &f);
+        uint8_t m[3] = { 0x90, 50, 100 };
+        viz_sender_midi(&snd, m, keep, NULL);
+        CHECK(snd.covers == 1, "a Move note drew %ld covers", snd.covers);
+        viz_sender_midi(&snd, g_kept + 1, keep, NULL);
+        CHECK(snd.covers == 1, "Viz's own cover, echoed, drew another");
+        /* at most 4 covers a block (the first note's among them); the rest
+         * wait for the re-send */
+        for (int k = 0; k < 10; k++) { uint8_t n[3] = { 0x91, (uint8_t)(60 + k), 9 }; viz_sender_midi(&snd, n, keep, NULL); }
+        CHECK(snd.covers == 4, "%ld covers in one block, not 4", snd.covers);
+        int unknown = 0;
+        for (int k = 0; k < 10; k++) { uint8_t n[3] = { 0x91, (uint8_t)(60 + k), 9 }; unknown += !snd.known[viz_grid_painted(GRID_MATRIX, n)]; }
+        CHECK(unknown == 10, "only %d of a burst's 10 lights queued to be sent again", unknown);
+    }
 }
 
 static void test_refusals(void) {
@@ -705,6 +842,7 @@ int main(int argc, char **argv) {
     api = move_audio_fx_init_v2(&g_host);
 
     printf("midi\n");       test_midi();
+    printf("move notes\n"); test_move_notes();
     printf("refusals\n");   test_refusals();
     printf("turn\n");       test_turn();
     printf("launchpad\n");  test_launchpad();
