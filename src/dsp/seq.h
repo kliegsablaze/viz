@@ -68,6 +68,9 @@ void viz_seq_defaults(viz_seq_params_t *p);
 void viz_seq_apply(viz_seq_t *s, const viz_seq_params_t *p, const viz_features_t *f, viz_look_t *L);
 /* A scene drawn only from the sound (dark in Beat mode): Random skips it there. */
 int viz_seq_sound_only(int scene);
+/* A scene Random plays one time in eight as often as the rest (white-ish,
+ * flickering or still; the user's review, 2026-10-11). */
+int viz_seq_rare(int scene);
 /* A step's length in beats for a bars option (0 for Off; Random is not one). */
 double viz_seq_bars_beats(int opt, int beats_per_bar);
 

@@ -569,8 +569,15 @@ up to eight slots, each choosing what plays and for how long; pick a step, then 
 - **Random** is the first option of every step field. It draws again each time the step
   comes round, from all of that field's values (any of the 106 scenes, any length from 1 beat
   to 8 bars). The draw is seeded by where in the song the step starts, so a song played
-  twice lights the same way twice. **Defaults:** scene and colour Random; rate, size and fold
-  Same.
+  twice lights the same way twice. **Defaults:** scene, colour and size Random, rate 1/4,
+  fold Four.
+- **Rare scenes.** The user's review (2026-10-11) flagged 32 scenes, measured with the
+  gallery's engine (`tools/gallery/score_scenes.mjs`): white-ish (Wipe, Curtain, Iris, Pie,
+  Diag, Coil, Mow, Pour, Weave, Piston, Frame, Cross, Rise, Icons, Zoom, Burst, Bass, Tally),
+  flickering (Rings, Diamond, Trace, Swap, Doors, Arrow) or still in Beat mode (Hoop, Tanks,
+  Speaker, Noughts, Lander, Charge, Stairs, Goal). The user kept them for now, played rarely:
+  a scene Random draws weighs 1 if rare and 8 otherwise (`viz_seq_rare`), so about 1 step in
+  20 is a rare one. Picked by hand, they play as always.
 - **Step RATE reaches further than the Look page's**: 4 bars and 2 bars, then 1 bar to
   1/16. The scene engine takes a steps-per-beat override for the two long ones
   (`viz_shape_knobs_t.steps_per_beat`).
@@ -887,7 +894,7 @@ These shape the picture, and each one shows its effect straight away.
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
 | 1 | `scene` | SCENE | **Scene.** Enum: all 106 scenes (the 100 geometric and six soft ones) in alphabetical order; each keeps its gallery number inside Viz, so saved sets and the parity test are unaffected. A new Viz starts on a **random scene** (the user, 2026-10-11); a saved set restores its own. The declared default (what a reset gives) is Pulse. |
-| 2 | `color` | COLOR | **Colour set.** Enum: Ice, Fire, Acid, Sunset, Mint, Royal, Candy, Mono, Rainbow. Three colours each; Rainbow spreads hues across the grid. Default Acid. |
+| 2 | `color` | COLOR | **Colour set.** Enum: Ice, Fire, Acid, Sunset, Mint, Royal, Candy, Mono, Rainbow. Three colours each; Rainbow spreads hues across the grid. Default Acid. Ice's third colour is violet and Mint's lime: they were near-white, which the user found cold (2026-10-11). |
 | 3 | `rate` | RATE | **Steps, on the beat.** Enum: 1 bar, 1/2, 1/4, 1/8, 1/16: one step per bar up to one per 16th. Default 1/4. |
 | 4 | `size` | SIZE | **Shape size (pads).** Enum: 1, 2, 3, 4. How big or thick the shapes are. Default 2. |
 | 5 | `trail` | TRAIL | **Trail length.** Enum: Off, Short, Medium, Long, Smear. How long lights linger after they move on; Off is hard-edged. Default Short. |
@@ -1138,7 +1145,7 @@ packets on a schedule, and serves a scripted `get_beat_position` and `get_bpm`.
 
 **Fold** (`test_fold_keeps`): no scene is darker folded than with FOLD Off, at any FOLD.
 The SEQ page's Random never picks a sound-only scene when there is no sound, and still does
-when there is.
+when there is; it plays the 32 rare scenes, but in under 1 step in 10 (4.6% measured).
 
 **Move's notes** (`test_move_notes`; the fake Matrix paints channel messages from its
 palettes, even between SysEx packets)

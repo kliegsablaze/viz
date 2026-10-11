@@ -147,15 +147,37 @@ int viz_seq_sound_only(int scene) {
     return 0;
 }
 
-/* Random's scene for the step playing: any scene, or with no sound, any but
- * those (the n-th of the rest, so it stays the same for the whole step). */
+/* Scenes Random plays rarely: the review of 2026-10-11 found them white-ish,
+ * flickering or still in Beat mode (tools/gallery/score_scenes.mjs). The user
+ * kept them, but wants them seldom in the sequence. */
+static const char *const k_rare[] = {
+    "Wipe", "Curtain", "Iris", "Pie", "Diag", "Coil", "Mow", "Pour", "Weave", "Piston", "Frame",
+    "Cross", "Rise", "Icons", "Zoom", "Burst", "Bass", "Tally",                                  /* white-ish */
+    "Rings", "Diamond", "Trace", "Swap", "Doors", "Arrow",                                       /* flicker */
+    "Hoop", "Tanks", "Speaker", "Noughts", "Lander", "Charge", "Stairs", "Goal",                 /* still */
+};
+int viz_seq_rare(int scene) {
+    if (scene < 0 || scene >= SCENE_COUNT) return 0;
+    for (unsigned i = 0; i < sizeof k_rare / sizeof k_rare[0]; i++)
+        if (!strcmp(viz_scene_names[scene], k_rare[i])) return 1;
+    return 0;
+}
+
+/* Random's scene for the step playing, the same for the whole step: a rare
+ * scene weighs 1 against an ordinary one's SEQ_RARE_ODDS, and with no sound
+ * a sound-only scene weighs nothing. */
+#define SEQ_RARE_ODDS 8
+static int scene_weight(int i, const viz_features_t *f) {
+    if (!f->sound && viz_seq_sound_only(i)) return 0;
+    return viz_seq_rare(i) ? 1 : SEQ_RARE_ODDS;
+}
 static int random_scene(const viz_seq_t *s, const viz_features_t *f) {
-    if (f->sound || !viz_seq_sound_only(s->draw[0])) return s->draw[0];
-    int n = 0;
-    for (int i = 0; i < SCENE_COUNT; i++) n += !viz_seq_sound_only(i);
-    int want = pick(s->start, s->cur, 5, n);
+    int total = 0;
+    for (int i = 0; i < SCENE_COUNT; i++) total += scene_weight(i, f);
+    if (total <= 0) return s->draw[0];
+    int want = pick(s->start, s->cur, 5, total);
     for (int i = 0; i < SCENE_COUNT; i++)
-        if (!viz_seq_sound_only(i) && want-- == 0) return i;
+        if ((want -= scene_weight(i, f)) < 0) return i;
     return s->draw[0];
 }
 static int wrapi(int v, int n) { return ((v % n) + n) % n; }

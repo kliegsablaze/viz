@@ -89,10 +89,11 @@ button.on { background: var(--accent); color: #000; border-color: var(--accent);
 </div>
 
 <div class="review-note" id="reviewNote"><b>Review, 2026-10-11.</b> These scenes were measured with the gallery's engine (tools/gallery/score_scenes.mjs) and flagged:
-  <b>White</b>: a lot of white-ish light. It comes mostly from the pale third colour of Ice and Mint and from Mono, so the scenes that paint the whole grid in it suffer most (try COLOR Ice);
+  <b>White</b>: a lot of white-ish light. It came mostly from the pale third colour Ice and Mint had (now violet and lime) and from Mono, so the scenes that paint the whole grid in it suffered most;
   <b>Flicker</b>: many pads jump between dark and bright in a single frame;
   <b>Still</b>: hardly moves in Beat mode (no sound), the mode Viz starts in;
   <b>Sound only</b>: dark in Beat mode, and SEQ's Random already skips it there.
+  The user kept them all for now (2026-10-11): SEQ's Random plays each one an eighth as often as the rest (seq.c, viz_seq_rare).
   Beat mode below is on, as on the Move by default. Mark each one Keep, Maybe or Drop.</div>
 <div class="filter" id="filter">Show:
   <button data-f="review" class="on">Review</button><button data-f="all">All</button><button data-f="new">New</button><button data-f="unmarked">Not marked</button><button data-f="keep">Kept</button><button data-f="drop">Dropped</button>
@@ -213,11 +214,11 @@ function listen(beats, dt) {
 
 /* ---------------- the eight knobs ---------------- */
 const PALETTES = {
-  Ice:    [[0, 90, 255], [0, 220, 255], [190, 240, 255]],
+  Ice:    [[0, 90, 255], [0, 220, 255], [120, 60, 255]],
   Fire:   [[255, 25, 0], [255, 130, 0], [255, 225, 40]],
   Acid:   [[110, 255, 0], [255, 0, 190], [0, 255, 220]],
   Sunset: [[255, 0, 110], [255, 120, 0], [140, 0, 255]],
-  Mint:   [[0, 255, 110], [0, 150, 255], [210, 255, 235]],
+  Mint:   [[0, 255, 110], [0, 150, 255], [150, 255, 0]],
   Royal:  [[120, 0, 255], [255, 185, 0], [0, 70, 255]],
   Candy:  [[255, 70, 170], [60, 200, 255], [255, 235, 70]],
   Mono:   [[255, 255, 255], [140, 140, 150], [70, 70, 80]],

@@ -808,22 +808,30 @@ static void test_sequence(void) {
         int named = 0;
         for (int i = 0; i < SCENE_COUNT; i++) named += viz_seq_sound_only(i);
         CHECK(named == 7, "%d sound-only scenes found by name, not 7", named);
+        int rares = 0;
+        for (int i = 0; i < SCENE_COUNT; i++) rares += viz_seq_rare(i);
+        CHECK(rares == 32, "%d rare scenes found by name, not 32", rares);
         viz_seq_params_t q;
         viz_seq_defaults(&q);
         q.play = 1;
         for (int pass = 0; pass < 2; pass++) {
             viz_seq_t t;
             viz_seq_init(&t);
-            int hits = 0;
-            for (int b = 0; b < 4000; b += 4) {
+            int hits = 0, rare = 0, steps = 0;
+            for (int b = 0; b < 16000; b += 4) {
                 viz_look_t M = plain_look();
                 viz_features_t g = feat_at(b + 0.5);
                 g.sound = pass;
                 viz_seq_apply(&t, &q, &g, &M);
                 hits += viz_seq_sound_only(M.scene);
+                rare += viz_seq_rare(M.scene);
+                steps++;
             }
             if (pass == 0) CHECK(hits == 0, "with no sound, Random picked a sound-only scene %d times", hits);
             else CHECK(hits > 0, "with sound, Random never picked a sound-only scene");
+            /* The review's scenes: rare, never gone (about 1 step in 20). */
+            CHECK(rare > 0 && rare * 10 < steps, "rare scenes played %d of %d steps", rare, steps);
+            if (pass == 0) printf("  rare scenes: %d of %d steps in Beat mode\n", rare, steps);
         }
     }
 
