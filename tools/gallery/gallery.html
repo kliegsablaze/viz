@@ -524,9 +524,6 @@ const SCENES = [
       if (c.time - st.b < .12) { for (let x = 1; x < 7; x++) g.set(x, 4, 0, 1); return; }
       spr(g, ["..####..", ".#....#.", "#......#", "#......#", ".#....#.", "..####.."], 0, 1, 0);
       const px = [2, 3, 4, 3][c.step % 4]; for (let q = 0; q < 4; q++) g.set(px + (q % 2), 3 + (q >> 1), 2, 1); } },
-  { name: "Ghost", uses: "RATE", desc: "A ghost bobs up and down, glances left and right, and wiggles its skirt on every step.",
-    draw(g, c) { const k = c.step % 2, G = ["..####..", ".######.", "########", "#..##..#", "########", "########", k ? "#.##.##." : ".##.##.#"];
-      spr(g, G, 0, k, 1); const look = Math.floor(c.step / 2) % 2; g.set(1 + look, 3 + k, 2, 1); g.set(5 + look, 3 + k, 2, 1); } },
   { name: "Sun", uses: "RATE", desc: "A sun whose rays switch between straight and diagonal on every step.",
     draw(g, c) { each((x, y) => { if (Math.hypot(x - C, y - C) < 1.6) g.set(x, y, 0, 1); });
       const B = c.step % 2 ? [[0, 0], [6, 0], [0, 6], [6, 6]] : [[3, 0], [3, 6], [0, 3], [6, 3]];
@@ -565,9 +562,6 @@ const SCENES = [
       each((x, y) => { if (y >= 1 && y <= 6 && x <= 6 && (y === 1 || y === 6 || x === 0 || x === 6)) g.set(x, y, 2, .45); });
       g.set(7, 3, 2, .45); g.set(7, 4, 2, .45);
       for (let x = 1; x <= 5; x++) for (let y = 2; y <= 5; y++) { if (k === 6) g.set(x, y, 2, 1 - c.f); else if (x <= k) g.set(x, y, k < 2 ? 0 : 1, 1); } } },
-  { name: "Loader", uses: "RATE", desc: "A loading wheel: seven dots in a ring, the bright one moving on a dot per step.",
-    draw(g, c) { const R = ringPath(3); for (let i = 0; i < 7; i++) { const [x, y] = R[i * 4], d = ((c.step - i) % 7 + 7) % 7;
-      g.set(x, y, d === 0 ? 2 : 0, d === 0 ? 1 : d < 3 ? .5 - d * .12 : .12); } } },
   { name: "UFO", uses: "RATE", desc: "A flying saucer drifts side to side, a pad per step, and shines its beam down on every kick.",
     draw(g, c) { const ox = tri(c.step, 2); spr(g, ["..##..", ".####.", "######"], ox, 0, 0);
       if (feat.kick > .15) for (let y = 3; y < 8; y++) { const h = (y - 2) * .5; for (let x = 0; x < 8; x++) if (Math.abs(x - (ox + 2.5)) <= h) g.set(x, y, 2, feat.kick * .8); } } },
@@ -592,12 +586,6 @@ const SCENES = [
   { name: "Propeller", uses: "RATE SIZE", desc: "Thin blades click round a sixteenth of a turn per step. SIZE adds blades.",
     draw(g, c) { const n = Math.min(c.s, 3); for (let b = 0; b < n; b++) { const a = c.step * Math.PI / 8 + b * Math.PI / n;
       line(g, C - Math.cos(a) * 4, C - Math.sin(a) * 4, C + Math.cos(a) * 4, C + Math.sin(a) * 4, b % 3); } } },
-  { name: "Cube", uses: "RATE", desc: "A wireframe cube turning in 3D, an eighth of a turn every two steps.",
-    draw(g, c) { const a = (c.step + c.f) * Math.PI / 8, b = .55, V = [];
-      for (let i = 0; i < 8; i++) { let x = i & 1 ? 1 : -1, y = i & 2 ? 1 : -1, z = i & 4 ? 1 : -1;
-        [x, z] = [x * Math.cos(a) - z * Math.sin(a), x * Math.sin(a) + z * Math.cos(a)]; [y, z] = [y * Math.cos(b) - z * Math.sin(b), y * Math.sin(b) + z * Math.cos(b)];
-        V.push([C + x * 2.3, C + y * 2.3]); }
-      for (let i = 0; i < 8; i++) for (const m of [1, 2, 4]) if (!(i & m)) line(g, V[i][0], V[i][1], V[i | m][0], V[i | m][1], m === 4 ? 1 : 0); } },
   { name: "Eight", uses: "RATE", desc: "A dot with a short tail traces a figure of eight, once every four steps.",
     draw(g, c) { const t = (c.step + c.f) * Math.PI / 2;
       for (let i = 0; i < 4; i++) { const u = t - i * .18; g.set(C + 3.4 * Math.sin(u), C + 3.2 * Math.sin(2 * u), i ? 0 : 2, 1 - i * .22); } } },
@@ -649,10 +637,6 @@ const SCENES = [
       const box = (x0, ci) => { for (let i = 0; i < 4; i++) { g.set(x0 + i, 2, ci, 1); g.set(x0 + i, 5, ci, 1); g.set(x0, 2 + i, ci, 1); g.set(x0 + 3, 2 + i, ci, 1); } };
       box(2 - o, 0); box(2 + o, 1); } },
   // ---- music ----
-  { name: "Peaks", uses: "-", desc: "The equalizer as eight dots only: each jumps up with its band and falls slowly.",
-    init(st) { st.p = new Array(8).fill(0); },
-    draw(g, c, st) { for (let x = 0; x < 8; x++) { st.p[x] = Math.max(feat.bands[x] * 7, st.p[x] - c.dt * 5); const y = 7 - Math.round(st.p[x]);
-      g.set(x, y, y < 3 ? 2 : y < 5 ? 1 : 0, 1); } } },
   { name: "Bass", uses: "-", desc: "A floor that rises and falls with the bass, its top edge brightest.",
     draw(g, c) { const h = Math.round((feat.bands[0] + feat.bands[1]) / 2 * 8);
       for (let x = 0; x < 8; x++) for (let r = 0; r < h; r++) g.set(x, 7 - r, r === h - 1 ? 2 : 0, 1); } },
@@ -675,57 +659,75 @@ const SCENES = [
     draw(g, c) { const f0 = tri(c.step, 3), f1 = tri(c.step + 1, 3), y = Math.round(6 - 2 * (f0 + (f1 - f0) * Math.min(1, c.f * 2)));
       for (let k = 0; k < 4; k++) { g.set(0, k * 2 + 1, 2, .3); g.set(7, k * 2 + 1, 2, .3); }
       for (let x = 2; x < 6; x++) { g.set(x, y, 0, 1); g.set(x, y + 1, 0, 1); } } },
-  { name: "Simon", fresh: true, uses: "RATE", desc: "The memory game: the four quarters flash a sequence, one per step, and the sequence gets one longer every round.",
-    draw(g, c) { let t = c.step % 44, len = 1; while (t >= len + 1) { t -= len + 1; len++; }
-      const r = hash(Math.floor(c.step / 44) + 77), seq = []; for (let i = 0; i < 8; i++) seq.push(Math.floor(r() * 4));
-      const cols = [[0], [1], [2], [0, 1]];
-      for (let q = 0; q < 4; q++) { const on = t < len && seq[t] === q, qx = q === 1 || q === 2 ? 4 : 0, qy = q >= 2 ? 4 : 0;
-        for (let y = qy; y < qy + 4; y++) for (let x = qx; x < qx + 4; x++) if ((x % 4 === 0 || x % 4 === 3) && (y % 4 === 0 || y % 4 === 3)) continue;
-          else for (const ci of cols[q]) g.set(x, y, ci, on ? 1 - c.f * .5 : .12); } } },
-  { name: "Hoop", fresh: true, uses: "-", desc: "Basketball: a shot on every kick arcs into the hoop, and the net flashes as it drops through.",
+  { name: "Hoop", uses: "-", desc: "Basketball: a shot on every kick arcs into the hoop, and the net flashes as it drops through.",
     init(st) { st.s = []; },
     draw(g, c, st) { for (let y = 0; y < 3; y++) g.set(7, y, 2, .4); g.set(5, 2, 1, 1); g.set(6, 2, 1, 1);
       if (c.kick) st.s.push(c.time); st.s = st.s.filter((t) => c.time - t < .6);
       for (const t of st.s) { const u = (c.time - t) / .45;
         if (u <= 1) g.set(.5 + 5 * u, 6 - 4 * u - 3 * Math.sin(Math.PI * u), 0, 1);
         else { const y = 2 + (u - 1) * 14; g.set(5.5, y, 0, 1); if (y < 5) { g.set(5, 3, 2, 1); g.set(6, 3, 2, 1); } } } } },
-  { name: "Bowl", fresh: true, uses: "RATE", desc: "Bowling: the ball rolls up the lane on every step and scatters the pins.",
+  { name: "Bowl", uses: "RATE", desc: "Bowling: the ball rolls up the lane on every step and scatters the pins.",
     draw(g, c) { const P = [[1, 0], [3, 0], [4, 0], [6, 0], [3, 1], [4, 1]], hit = c.f > .6, u = (c.f - .6) / .4;
       for (const [px, py] of P) { if (!hit) g.set(px, py, 2, 1);
         else g.set(px + Math.sign(px - 3.5) * u * 4, py - u * 2 + (py ? u * 3 : 0), 2, 1 - u); }
       const y = Math.round(6 - 6 * Math.min(1, c.f / .6)); if (!hit) for (let q = 0; q < 4; q++) g.set(3 + (q % 2), y + (q >> 1), c.step % 2, 1); } },
-  { name: "Darts", fresh: true, uses: "RATE", desc: "Three darts fly into the board, one per step, then the board clears.",
+  { name: "Darts", uses: "RATE", desc: "Three darts fly into the board, one per step, then the board clears.",
     draw(g, c) { each((x, y) => { const d = cheb(x, y); g.set(x, y, d < 1 ? 2 : d < 2 ? 1 : 0, d < 1 ? .6 : .18); });
       const round = Math.floor(c.step / 4), k = c.step % 4; if (k === 3) return;
       for (let i = 0; i <= k; i++) { const r = hash(round * 4 + i + 9), tx = 1 + Math.floor(r() * 6), ty = 1 + Math.floor(r() * 6);
         if (i < k || c.f > .3) g.set(tx, ty, 2, 1); else { const u = c.f / .3; g.set(7 + (tx - 7) * u, 7 + (ty - 7) * u, 2, 1); } } } },
-  { name: "Cat", fresh: true, uses: "RATE", desc: "A cat that looks left and right on every step, blinks on the snare and twitches an ear on the kick.",
-    init(st) { st.b = -9; },
-    draw(g, c, st) { if (c.snare) st.b = c.time; const blink = c.time - st.b < .12, tw = feat.kick > .5;
-      const F = [tw ? ".......#" : "#......#", tw ? ".#....##" : "##....##", "########", blink ? "########" : "#..##..#", "########", "########", ".######.", "..####.."];
-      spr(g, F, 0, 0, 0); g.set(3, 5, 1, 1); g.set(4, 5, 1, 1);
-      if (!blink) { const l = c.step % 2; g.set(1 + l, 3, 2, 1); g.set(5 + l, 3, 2, 1); } } },
-  { name: "Notes", fresh: true, uses: "RATE", desc: "A pair of joined music notes that bob up and down in turn, one on every step.",
-    draw(g, c) { const N = ["..#####", "..#...#", "..#...#", "..#...#", "###.###", "###.###"], up = c.step % 2;
-      for (let y = 0; y < 6; y++) for (let x = 0; x < 7; x++) if (N[y][x] === "#") { const right = x >= 4, lift = right === !!up ? 1 : 0;
-        g.set(x, y + 2 - lift, y === 0 ? 2 : right ? 1 : 0, 1); } } },
-  { name: "Seesaw", fresh: true, uses: "RATE", desc: "A seesaw tips the other way on every step and the ball rolls down to the low end.",
+  { name: "Seesaw", uses: "RATE", desc: "A seesaw tips the other way on every step and the ball rolls down to the low end.",
     draw(g, c) { const dir = c.step % 2 ? 1 : -1, tilt = -dir + 2 * dir * Math.min(1, c.f * 4);
       g.set(3, 7, 1, 1); g.set(4, 7, 1, 1); g.set(3.5, 6, 1, 1);
       line(g, 0, 5 - 2 * tilt, 7, 5 + 2 * tilt, 0);
       const bx = 3.5 + dir * 3.2 * Math.min(1, Math.max(0, (c.f - .1) * 1.3)), by = 5 + 2 * tilt * (bx - 3.5) / 3.5 - 1;
       g.set(bx, by, 2, 1); } },
-  { name: "Yoyo", fresh: true, uses: "RATE", desc: "A yo-yo drops down its string and climbs back up on every step.",
+  { name: "Yoyo", uses: "RATE", desc: "A yo-yo drops down its string and climbs back up on every step.",
     draw(g, c) { g.set(3, 0, 2, 1); g.set(4, 0, 2, 1); const y = Math.round(1 + 5 * Math.sin(Math.PI * c.f));
       for (let j = 1; j < y; j++) g.set(3, j, 2, .3); for (let q = 0; q < 4; q++) g.set(3 + (q % 2) - (q % 2 ? 0 : 0), y + (q >> 1), c.step % 3, 1); } },
-  { name: "Blinds", fresh: true, uses: "RATE", desc: "Four slats flip to a new colour one after another, top to bottom, on every step.",
-    draw(g, c) { for (let i = 0; i < 4; i++) { const t = (c.f - i * .18) / .12;
-      for (let x = 0; x < 8; x++) for (let r = 0; r < 2; r++) { const y = i * 2 + r;
-        if (t < 0) g.set(x, y, (c.step + 2) % 3, 1); else if (t < 1) { if (r === 1) g.set(x, y, c.step % 3, .6); } else g.set(x, y, c.step % 3, 1); } } } },
-  { name: "Coil", fresh: true, uses: "RATE", desc: "A new colour coils in from the edge to the centre along a spiral, once per step.",
+  { name: "Coil", uses: "RATE", desc: "A new colour coils in from the edge to the centre along a spiral, once per step.",
     draw(g, c) { const n = Math.floor(c.f * 65); SPIRAL.forEach(([x, y], i) => g.set(x, y, i < n ? c.step % 3 : (c.step + 2) % 3, 1)); } },
-  { name: "Open", fresh: true, uses: "RATE", desc: "A new colour opens out from the middle line to both edges, side to side then up and down.",
-    draw(g, c) { const vert = c.step % 2, w = c.f * 4.5; each((x, y) => g.set(x, y, Math.abs((vert ? y : x) - C) < w ? c.step % 3 : (c.step + 2) % 3, 1)); } },
+  { name: "Golf", fresh: true, uses: "RATE", desc: "A putt on every step: the ball rolls across the green, slows down and drops into the hole by the flag.",
+    draw(g, c) { g.set(6, 0, 1, 1); g.set(7, 0, 1, 1); g.set(6, 1, 1, .5); const r = hash(c.step + 3), sx = Math.floor(r() * 3), sy = 4 + Math.floor(r() * 4);
+      const u = 1 - Math.pow(1 - Math.min(1, c.f * 1.4), 2), x = sx + (6 - sx) * u, y = sy + (2 - sy) * u;
+      g.set(6, 2, 2, u >= 1 ? 1 - (c.f - .72) * 2 : .35); if (u < 1) g.set(x, y, 0, 1); } },
+  { name: "Volley", fresh: true, uses: "RATE", desc: "A ball lobbed back and forth over a net, landing on each side on every step.",
+    draw(g, c) { for (let y = 5; y < 8; y++) { g.set(3, y, 2, .4); g.set(4, y, 2, .4); }
+      const right = c.step % 2 === 0, x = right ? 1 + 5 * c.f : 6 - 5 * c.f, y = 6 - 5.5 * Math.sin(Math.PI * c.f);
+      g.set(1, 7, 0, right && c.f < .2 ? 1 : .4); g.set(6, 7, 1, !right && c.f < .2 ? 1 : .4); g.set(x, y, 2, 1); } },
+  { name: "Swing", fresh: true, uses: "RATE", desc: "A playground swing reaching the top of its arc on every step.",
+    draw(g, c) { const a = .95 * Math.cos(Math.PI * (c.step + c.f)), sx = 3.5 + 6 * Math.sin(a), sy = 6 * Math.cos(a);
+      line(g, 3, 0, sx - .5, sy, 2, .35); line(g, 4, 0, sx + .5, sy, 2, .35); g.set(sx - .5, sy, 0, 1); g.set(sx + .5, sy, 0, 1); } },
+  { name: "Pogo", fresh: true, uses: "RATE", desc: "A spring squashes flat on every step and launches the block on top into the air.",
+    draw(g, c) { const L = Math.round(1 + 3.5 * Math.sin(Math.PI * c.f)), top = 6 - L;
+      for (let x = 0; x < 8; x++) g.set(x, 7, 2, .3);
+      for (let j = 0; j <= L; j++) g.set(j % 2 ? 4 : 3, 6 - j, 1, 1);
+      for (let q = 0; q < 4; q++) g.set(3 + (q % 2), top - 1 + (q >> 1) - 1, 0, 1); } },
+  { name: "Fountain", fresh: true, uses: "-", desc: "A fountain that shoots a spray of drops up on every kick; they arc out and fall to both sides.",
+    init(st) { st.d = []; st.r = rng(17); },
+    draw(g, c, st) { g.set(3, 7, 2, 1); g.set(4, 7, 2, 1);
+      if (c.kick) for (let i = 0; i < 6; i++) st.d.push({ vx: (i - 2.5) * 1.1 + (st.r() - .5) * .4, vy: 7.5 + st.r() * 2, t: c.time, ci: i % 2 });
+      st.d = st.d.filter((d) => c.time - d.t < 1.4);
+      for (const d of st.d) { const t = c.time - d.t, y = 7 - d.vy * t + 6 * t * t; if (y <= 7.4) g.set(3.5 + d.vx * t, y, d.ci, 1); } } },
+  { name: "Goal", fresh: true, uses: "RATE", desc: "Penalties: a shot at goal on every kick while the keeper shuffles across, a pad per step. A goal lights the net.",
+    init(st) { st.s = []; },
+    draw(g, c, st) { for (let x = 1; x <= 6; x++) g.set(x, 0, 2, .35); for (let y = 0; y < 3; y++) { g.set(1, y, 2, .35); g.set(6, y, 2, .35); }
+      const kx = 2 + tri(c.step, 2); g.set(kx, 2, 1, 1); g.set(kx + 1, 2, 1, 1);
+      if (c.kick) st.s.push({ t: c.time, tx: 2 + Math.floor(hash(Math.floor(c.time * 10))() * 4) }); st.s = st.s.filter((s) => c.time - s.t < .55);
+      for (const s of st.s) { const u = (c.time - s.t) / .3;
+        if (u < 1) g.set(3.5 + (s.tx - 3.5) * u, 7 - 6 * u, 0, 1);
+        else for (let x = 2; x <= 5; x++) for (let y = 0; y < 2; y++) g.set(x, y, 0, 1 - (u - 1) * .55); } } },
+  { name: "Skate", fresh: true, uses: "RATE", desc: "A skater rides a halfpipe, reaching the lip on one side, then the other, on every step.",
+    draw(g, c) { const ramp = (x) => 7 - Math.round(Math.pow(Math.abs(x - 3.5) / 3.5, 2) * 5);
+      for (let x = 0; x < 8; x++) g.set(x, ramp(x), 2, .35);
+      const x = 3.5 - 3.5 * Math.cos(Math.PI * (c.step + c.f)), rx = Math.max(0, Math.min(7, Math.round(x)));
+      g.set(rx, ramp(rx) - 1, 0, 1); g.set(rx, ramp(rx) - 2, 1, 1); } },
+  { name: "Mow", fresh: true, uses: "RATE", desc: "A new colour is mown in row by row, back and forth like a lawnmower, once per step.",
+    draw(g, c) { const n = Math.floor(c.f * 65);
+      each((x, y) => { const i = y * 8 + (y % 2 ? 7 - x : x); g.set(x, y, i < n ? c.step % 3 : (c.step + 2) % 3, 1); }); } },
+  { name: "Pour", fresh: true, uses: "RATE", desc: "A new colour pours in and fills the grid from the bottom up once per step, its surface sloshing.",
+    draw(g, c) { const L = c.f * 8.6;
+      each((x, y) => { const s = L + .7 * Math.sin(x * .9 + c.time * 6) * Math.min(1, L) * (L < 8 ? 1 : 0); g.set(x, y, 7 - y < s ? c.step % 3 : (c.step + 2) % 3, 1); }); } },
 ];
 
 /* ---------------- engine: palette, mirror, react, trail, underglow ---------------- */
