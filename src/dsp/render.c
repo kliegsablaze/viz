@@ -111,10 +111,34 @@ float viz_fbm3(float x, float y, float z, int octaves) {
 /* ---- the scene list ------------------------------------------------------ */
 
 const char *viz_scene_names[SCENE_COUNT];
+const char *viz_scene_menu[SCENE_COUNT];
+int viz_scene_order[SCENE_COUNT];
+int viz_scene_pos[SCENE_COUNT];
+
+/* A before B, ignoring case (src/canvas.js sorts the same way). */
+static int name_before(const char *a, const char *b) {
+    for (;; a++, b++) {
+        int x = *a >= 'A' && *a <= 'Z' ? *a + 32 : *a, y = *b >= 'A' && *b <= 'Z' ? *b + 32 : *b;
+        if (x != y || !x) return x < y;
+    }
+}
 
 __attribute__((constructor)) static void scene_names(void) {
     for (int i = 0; i < SHAPE_COUNT; i++) viz_scene_names[i] = viz_shape_names[i];
     for (int i = 0; i < ORGANIC_COUNT; i++) viz_scene_names[SCENE_ORGANIC + i] = viz_organic[i].name;
+    /* the menu: every scene in alphabetical order (the user, 2026-10-11) */
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        int j = i;
+        while (j > 0 && name_before(viz_scene_names[i], viz_scene_names[viz_scene_order[j - 1]])) {
+            viz_scene_order[j] = viz_scene_order[j - 1];
+            j--;
+        }
+        viz_scene_order[j] = i;
+    }
+    for (int k = 0; k < SCENE_COUNT; k++) {
+        viz_scene_menu[k] = viz_scene_names[viz_scene_order[k]];
+        viz_scene_pos[viz_scene_order[k]] = k;
+    }
 }
 
 /* COLOR's nine sets, as the organic scenes' nearest gradients. */

@@ -433,7 +433,7 @@ static const char *const k_digits[9][7] = {
 };
 static void s_count(G *g, const Cx *c, void *st) {
     (void)st;
-    int n = (int)(c->step % 8) + 1;
+    int n = (int)(c->step % 4) + 1;
     for (int y = 0; y < 7; y++)
         for (int x = 0; x < 5; x++)
             if (k_digits[n][y][x] == '#') set(g, x + 2, y + 1, n == 1 ? 2 : (n - 1) % 2, 1);

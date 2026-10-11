@@ -3,7 +3,7 @@
 *Viz turns a Matrix into a light show for whatever the Move is playing: bold, geometric shapes
 in clear colours, stepping on the beat, with eight knobs you can play like an instrument.*
 
-**Status:** 0.1.0 built and installed. On 2026-10-10 the user turned the show from organic
+**Status:** 0.1.0 built and installed. 2026-10-11: scenes in alphabetical order, a random scene at start, MODE Beat by default, Count counts to 4. On 2026-10-10 the user turned the show from organic
 pictures to geometric scenes (see *The aesthetic brief*); the 100 scenes chosen in the scene
 gallery are ported to C with exact parity and passed on the Matrix. On 2026-10-11 the
 Sequence and Mod pages (now SEQ and MOD, before Settings) and the knob pictures were added,
@@ -372,7 +372,7 @@ The mix is summed to mono (keeping stereo width as one extra number), then:
 | Sound | sound time; clock ignored      | sound time + sound                  |
 | Blend | clock time + sound (stronger)  | as Auto                             |
 
-- **Auto** is the user's rule, and the default.
+- **Auto** is the user's first rule. **Beat** is the default since 2026-10-11 (the user).
 - **Blend** differs from Auto when playing: the clock moves the picture and the sound sets
   its *size and brightness* at twice Auto's depth.
 
@@ -437,7 +437,7 @@ TRAIL, FOLD, SHIFT and REACT work on all of them).
 | 20 | **Pinwheel** | Coloured blades click round one notch per step. SIZE sets how many blades. | RATE SIZE |
 | 21 | **Kit** | Each drum has its own shape: the kick a centre square, the snare the four corners, the hi-hat the outer ring. | SIZE |
 | 22 | **Icons** | A picture on every step: heart, smiley, invader, note, star. | RATE |
-| 23 | **Count** | Counts the steps out loud: big numbers 1 to 8. | RATE |
+| 23 | **Count** | Counts the steps out loud: big numbers 1 to 4 (to 8 in the gallery's first pick; the user, 2026-10-11). | RATE |
 | 24 | **Arrow** | A big arrow flies across the grid. It points a new way (up, right, down, left) on every step. | RATE |
 | 25 | **Corners** | Light runs in from all four corners and meets in the middle on every step. | RATE SIZE |
 | 26 | **Stack** | Blocks drop and stack up like Tetris, one per step. Full rows clear; when it reaches the top, the grid flashes and empties. | RATE SIZE |
@@ -843,7 +843,7 @@ These shape the picture, and each one shows its effect straight away.
 
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
-| 1 | `scene` | SCENE | **Scene.** Enum: the 100 geometric scenes in gallery order, then the six soft scenes. Default Pulse. |
+| 1 | `scene` | SCENE | **Scene.** Enum: all 106 scenes (the 100 geometric and six soft ones) in alphabetical order; each keeps its gallery number inside Viz, so saved sets and the parity test are unaffected. A new Viz starts on a **random scene** (the user, 2026-10-11); a saved set restores its own. The declared default (what a reset gives) is Pulse. |
 | 2 | `color` | COLOR | **Colour set.** Enum: Ice, Fire, Acid, Sunset, Mint, Royal, Candy, Mono, Rainbow. Three colours each; Rainbow spreads hues across the grid. Default Acid. |
 | 3 | `rate` | RATE | **Steps, on the beat.** Enum: 1 bar, 1/2, 1/4, 1/8, 1/16: one step per bar up to one per 16th. Default 1/4. |
 | 4 | `size` | SIZE | **Shape size (pads).** Enum: 1, 2, 3, 4. How big or thick the shapes are. Default 2. |
@@ -856,7 +856,7 @@ These shape the picture, and each one shows its effect straight away.
 
 | Knob | Key | Label | Behaviour |
 |------|-----|-------|-----------|
-| 1 | `mode` | MODE | **Sync mode.** Enum: Auto / Beat / Sound / Blend (see the table under *Mode*). Default Auto. |
+| 1 | `mode` | MODE | **Sync mode.** Enum: Auto / Beat / Sound / Blend (see the table under *Mode*). Default Beat (the user, 2026-10-11): the lights follow Move's clock, and the grid idles while Move is stopped. |
 | 2 | `power` | POWER | **Power source.** Enum: Port / Hub. *Port* (default) keeps every frame inside what the Move's USB-A port can supply (measured; see *The power guard*). *Hub* removes the limit, for a Matrix on a powered USB hub. |
 | 3 | `light` | LIGHT | **Brightness.** Overall level, 0–100%, applied after the power guard, so it can only make things dimmer. Default 50%. |
 | 4 | `grid` | GRID | **Grid device.** Enum: Matrix / LP Mini MK3 / LP X / LP Pro MK3 / LP MK2 / LP Pro (see *Other grids*). Default Matrix. Launchpads are untested. |

@@ -193,7 +193,7 @@ static void run(void *inst, synth_t *s, double seconds, int playing, int music) 
     }
 }
 
-static void *make(void) { return api->create_instance(".", "{\"sync_render\":1}"); }
+static void *make(void) { return api->create_instance(".", "{\"sync_render\":1,\"seed\":1}"); }
 
 /* ---- MIDI tests ------------------------------------------------------- */
 
@@ -453,6 +453,23 @@ static void test_move_notes(void) {
     }
 }
 
+/* A new Viz starts on a random scene. */
+static void test_random_start(void) {
+    char seen[8][64];
+    int distinct = 0;
+    for (int k = 0; k < 8; k++) {
+        char cfg[64];
+        snprintf(cfg, sizeof cfg, "{\"sync_render\":1,\"seed\":%d}", k + 1);
+        void *v = api->create_instance(".", cfg);
+        api->get_param(v, "scene", seen[k], sizeof seen[k]);
+        int dup = 0;
+        for (int j = 0; j < k; j++) dup |= !strcmp(seen[j], seen[k]);
+        distinct += !dup;
+        api->destroy_instance(v);
+    }
+    CHECK(distinct >= 5, "8 new Viz instances started on only %d different scenes", distinct);
+}
+
 static void test_refusals(void) {
     synth_t s = { 0, 3 };
     void *v = make();
@@ -478,6 +495,7 @@ static void test_turn(void) {
     for (int turn = 0; turn < 2; turn++) {
         void *v = make();
         reset_display(GRID_MATRIX);
+        api->set_param(v, "mode", "Auto");             /* stopped: the sound leads */
         api->set_param(v, "scene", "Bars");
         api->set_param(v, "edge", "Off");
         api->set_param(v, "turn", turn ? "90" : "0");
@@ -735,7 +753,7 @@ static void test_sequence(void) {
     /* step 1 one bar, step 3 two beats of Rings in Fire: 1 3 1 3 ... */
     p.play = 1;
     p.step[2].bars = 3;                       /* 2 beats */
-    p.step[2].scene = 1 + 1;                  /* Rings */
+    p.step[2].scene = 1 + viz_scene_pos[1];   /* Rings, by its place in the menu */
     p.step[2].color = 2 + 1;                  /* Fire */
     p.step[2].rate = 2 + 0;                   /* 4 bars */
     p.step[0].size = p.step[0].fold = p.step[2].size = p.step[2].fold = OPT_SAME;
@@ -901,7 +919,7 @@ static void test_controls(const char *dir) {
     /* defaults, as the user set them (2026-10-11) */
     void *d = make();
     const char *want[][2] = { { "play", "Off" }, { "s1_bars", "1 bar" }, { "s2_bars", "Off" }, { "s8_bars", "Off" },
-                              { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "Random" },
+                              { "mode", "Beat" }, { "s1_scene", "Random" }, { "s4_color", "Random" }, { "s4_rate", "Random" },
                               { "s4_size", "Random" }, { "s4_fold", "Four" }, { "m1_depth", "0.00" } };
     for (unsigned i = 0; i < sizeof want / sizeof want[0]; i++) {
         api->get_param(d, want[i][0], buf, sizeof buf);
@@ -935,6 +953,7 @@ int main(int argc, char **argv) {
 
     printf("midi\n");       test_midi();
     printf("move notes\n"); test_move_notes();
+    printf("random start\n"); test_random_start();
     printf("refusals\n");   test_refusals();
     printf("turn\n");       test_turn();
     printf("launchpad\n");  test_launchpad();

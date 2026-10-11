@@ -102,6 +102,11 @@ typedef struct {
 } viz_look_t;
 
 extern const char *viz_scene_names[SCENE_COUNT];   /* filled before main */
+/* The SCENE menu: the scenes in alphabetical order. viz_scene_order[k] is the
+ * scene at menu position k; viz_scene_pos is its inverse. */
+extern const char *viz_scene_menu[SCENE_COUNT];
+extern int viz_scene_order[SCENE_COUNT];
+extern int viz_scene_pos[SCENE_COUNT];
 extern const char *const viz_color_names[COLOR_COUNT];
 
 /* ---- a finished frame (render thread -> audio thread) ------------------- */

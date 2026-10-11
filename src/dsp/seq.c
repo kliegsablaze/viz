@@ -147,7 +147,7 @@ void viz_seq_apply(viz_seq_t *s, const viz_seq_params_t *p, const viz_features_t
     else { s->cur = -1; s->valid = 0; }
     if (s->cur >= 0) {
         const viz_seq_step_t *st = &p->step[s->cur];
-        L->scene = st->scene == OPT_RANDOM ? s->draw[0] : clampi(st->scene - 1, 0, SCENE_COUNT - 1);
+        L->scene = st->scene == OPT_RANDOM ? s->draw[0] : viz_scene_order[clampi(st->scene - 1, 0, SCENE_COUNT - 1)];
         if (st->color == OPT_RANDOM) k->color = s->draw[1];
         else if (st->color != OPT_SAME) k->color = clampi(st->color - 2, 0, SHAPE_COLORS - 1);
         if (st->rate == OPT_RANDOM) rate7 = s->draw[2];
@@ -176,7 +176,7 @@ void viz_seq_apply(viz_seq_t *s, const viz_seq_params_t *p, const viz_features_t
         static const int span[MOD_AIMS] = { 8, 8, 6, 3, 4, 4, 3, 4, 0, 3 };
         int off = (int)lrint(m->depth * v * span[m->aim < 0 || m->aim >= MOD_AIMS ? 0 : m->aim]);
         switch (m->aim) {
-        case AIM_SCENE: L->scene = wrapi(L->scene + off, SCENE_COUNT); break;
+        case AIM_SCENE: L->scene = viz_scene_order[wrapi(viz_scene_pos[L->scene] + off, SCENE_COUNT)]; break;   /* along the menu */
         case AIM_COLOR: k->color = wrapi(k->color + off, SHAPE_COLORS); break;
         case AIM_RATE:  rate7 = clampi(rate7 + off, 0, SEQ_RATES - 1); break;
         case AIM_SIZE:  k->size = clampi(k->size + off, 0, SHAPE_SIZES - 1); break;

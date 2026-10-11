@@ -69,7 +69,7 @@ typedef struct {
 /* name: the held-knob header, spelled out. cell: the knob's own word, at most
  * five letters, a real word (DESIGN.md, Control surface). */
 static pdef_t k_params[P_COUNT] = {
-    { "scene",  "Scene",             "SCENE", PT_ENUM, viz_scene_names, SCENE_COUNT, 0, 0, 0, NULL, 0 },
+    { "scene",  "Scene",             "SCENE", PT_ENUM, viz_scene_menu, SCENE_COUNT, 0, 0, 0, NULL, 0 },
     { "color",  "Colour set",        "COLOR", PT_ENUM, viz_shape_color_names, SHAPE_COLORS, 0, 0, 2, NULL, 0 },
     { "rate",   "Steps, on the beat", "RATE", PT_ENUM, viz_shape_rate_names, SHAPE_RATES, 0, 0, 2, NULL, 0 },
     { "size",   "Shape size (pads)", "SIZE",  PT_ENUM, viz_shape_size_names, SHAPE_SIZES, 0, 0, 1, NULL, 0 },
@@ -77,7 +77,7 @@ static pdef_t k_params[P_COUNT] = {
     { "fold",   "Mirror fold",       "FOLD",  PT_ENUM, viz_shape_mirror_names, SHAPE_MIRRORS, 0, 0, 0, NULL, 0 },
     { "shift",  "Colour swap",       "SHIFT", PT_ENUM, viz_shape_shift_names, SHAPE_SHIFTS, 0, 0, 1, NULL, 0 },
     { "react",  "Kick reaction",     "REACT", PT_ENUM, viz_shape_react_names, SHAPE_REACTS, 0, 0, 1, NULL, 0 },
-    { "mode",  "Sync mode",        "MODE",  PT_ENUM, k_modes, 4, 0, 0, 0, NULL, 1 },
+    { "mode",  "Sync mode",        "MODE",  PT_ENUM, k_modes, 4, 0, 0, 1, NULL, 1 },
     { "power", "Power source",     "POWER", PT_ENUM, k_power, 2, 0, 0, 0, NULL, 1 },
     { "light", "Brightness",       "LIGHT", PT_PCT,  NULL, 0, 0, 1, 0.5f, NULL, 1 },
     { "grid",  "Grid device",      "GRID",  PT_ENUM, viz_grid_names, GRID_COUNT, 0, 0, 0, NULL, 1 },
@@ -98,8 +98,10 @@ static void init_params(void) {
     if (done) return;
     done = 1;
     k_step_scenes[0] = "Random";
-    for (int i = 0; i < SCENE_COUNT; i++) k_step_scenes[1 + i] = viz_scene_names[i];
-    k_params[P_SCENE].opts = viz_scene_names;
+    for (int i = 0; i < SCENE_COUNT; i++) k_step_scenes[1 + i] = viz_scene_menu[i];
+    k_params[P_SCENE].opts = viz_scene_menu;
+    for (int i = 0; i < SCENE_COUNT; i++)            /* the declared default: Pulse */
+        if (!strcmp(viz_scene_menu[i], "Pulse")) k_params[P_SCENE].def = (float)i;
     viz_seq_params_t d;
     viz_seq_defaults(&d);
     static const struct { const char *key, *name, *cell; const char *const *opts; int n; } sf[SF_COUNT] = {
@@ -207,7 +209,8 @@ static void read_features(viz_t *s, viz_features_t *out) {
 
 static void build_look(viz_t *s, viz_look_t *L) {
     memset(L, 0, sizeof *L);
-    L->scene = pint(s, P_SCENE);
+    int menu = pint(s, P_SCENE);
+    L->scene = viz_scene_order[menu < 0 ? 0 : menu >= SCENE_COUNT ? SCENE_COUNT - 1 : menu];
     L->k.color = pint(s, P_COLOR);
     L->k.rate = pint(s, P_RATE);
     L->k.size = pint(s, P_SIZE);
@@ -494,6 +497,20 @@ static void *v2_create_instance(const char *module_dir, const char *config_json)
     viz_t *s = calloc(1, sizeof *s);
     if (!s) return NULL;
     for (int i = 0; i < P_COUNT; i++) atomic_store(&s->val[i], k_params[i].def);
+    /* A new Viz starts on a random scene (the user, 2026-10-11); a saved set
+     * restores its own through "state" afterwards. Tests pass "seed":N. */
+    {
+        const char *sd = config_json ? strstr(config_json, "\"seed\":") : NULL;
+        uint32_t h;
+        if (sd) h = (uint32_t)strtoul(sd + 7, NULL, 10);
+        else {
+            struct timespec t;
+            clock_gettime(CLOCK_REALTIME, &t);
+            h = (uint32_t)t.tv_nsec ^ (uint32_t)t.tv_sec * 2654435761u ^ (uint32_t)(uintptr_t)s;
+        }
+        h ^= h >> 16; h *= 0x7feb352dU; h ^= h >> 15; h *= 0x846ca68bU; h ^= h >> 16;
+        atomic_store(&s->val[P_SCENE], (float)(h % SCENE_COUNT));
+    }
     viz_listen_init(&s->listen);
     viz_sender_init(&s->sender, GRID_MATRIX);
     s->ts_upper = mi.valid && mi.ts_upper > 0 ? mi.ts_upper : 4;
