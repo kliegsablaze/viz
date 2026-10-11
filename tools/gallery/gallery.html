@@ -239,6 +239,10 @@ const SPIRAL = (() => { const p = []; let x0 = 0, y0 = 0, x1 = 7, y1 = 7;
   while (x0 <= x1 && y0 <= y1) { for (let x = x0; x <= x1; x++) p.push([x, y0]); for (let y = y0 + 1; y <= y1; y++) p.push([x1, y]);
     if (y1 > y0) for (let x = x1 - 1; x >= x0; x--) p.push([x, y1]); if (x1 > x0) for (let y = y1 - 1; y > y0; y--) p.push([x0, y]);
     x0++; y0++; x1--; y1--; } return p; })();
+const HILBERT = [...Array(64).keys()].map((d) => { let x = 0, y = 0, t = d;
+  for (let s = 1; s < 8; s *= 2) { const rx = 1 & (t / 2), ry = 1 & (t ^ rx);
+    if (ry === 0) { if (rx === 1) { x = s - 1 - x; y = s - 1 - y; } [x, y] = [y, x]; }
+    x += s * rx; y += s * ry; t = Math.floor(t / 4); } return [x, y]; });
 function each(fn) { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) fn(x, y); }
 
 const SCENES = [
@@ -687,29 +691,14 @@ const SCENES = [
       for (let j = 1; j < y; j++) g.set(3, j, 2, .3); for (let q = 0; q < 4; q++) g.set(3 + (q % 2) - (q % 2 ? 0 : 0), y + (q >> 1), c.step % 3, 1); } },
   { name: "Coil", uses: "RATE", desc: "A new colour coils in from the edge to the centre along a spiral, once per step.",
     draw(g, c) { const n = Math.floor(c.f * 65); SPIRAL.forEach(([x, y], i) => g.set(x, y, i < n ? c.step % 3 : (c.step + 2) % 3, 1)); } },
-  { name: "Golf", fresh: true, uses: "RATE", desc: "A putt on every step: the ball rolls across the green, slows down and drops into the hole by the flag.",
-    draw(g, c) { g.set(6, 0, 1, 1); g.set(7, 0, 1, 1); g.set(6, 1, 1, .5); const r = hash(c.step + 3), sx = Math.floor(r() * 3), sy = 4 + Math.floor(r() * 4);
-      const u = 1 - Math.pow(1 - Math.min(1, c.f * 1.4), 2), x = sx + (6 - sx) * u, y = sy + (2 - sy) * u;
-      g.set(6, 2, 2, u >= 1 ? 1 - (c.f - .72) * 2 : .35); if (u < 1) g.set(x, y, 0, 1); } },
-  { name: "Volley", fresh: true, uses: "RATE", desc: "A ball lobbed back and forth over a net, landing on each side on every step.",
+  { name: "Volley", uses: "RATE", desc: "A ball lobbed back and forth over a net, landing on each side on every step.",
     draw(g, c) { for (let y = 5; y < 8; y++) { g.set(3, y, 2, .4); g.set(4, y, 2, .4); }
       const right = c.step % 2 === 0, x = right ? 1 + 5 * c.f : 6 - 5 * c.f, y = 6 - 5.5 * Math.sin(Math.PI * c.f);
       g.set(1, 7, 0, right && c.f < .2 ? 1 : .4); g.set(6, 7, 1, !right && c.f < .2 ? 1 : .4); g.set(x, y, 2, 1); } },
-  { name: "Swing", fresh: true, uses: "RATE", desc: "A playground swing reaching the top of its arc on every step.",
+  { name: "Swing", uses: "RATE", desc: "A playground swing reaching the top of its arc on every step.",
     draw(g, c) { const a = .95 * Math.cos(Math.PI * (c.step + c.f)), sx = 3.5 + 6 * Math.sin(a), sy = 6 * Math.cos(a);
       line(g, 3, 0, sx - .5, sy, 2, .35); line(g, 4, 0, sx + .5, sy, 2, .35); g.set(sx - .5, sy, 0, 1); g.set(sx + .5, sy, 0, 1); } },
-  { name: "Pogo", fresh: true, uses: "RATE", desc: "A spring squashes flat on every step and launches the block on top into the air.",
-    draw(g, c) { const L = Math.round(1 + 3.5 * Math.sin(Math.PI * c.f)), top = 6 - L;
-      for (let x = 0; x < 8; x++) g.set(x, 7, 2, .3);
-      for (let j = 0; j <= L; j++) g.set(j % 2 ? 4 : 3, 6 - j, 1, 1);
-      for (let q = 0; q < 4; q++) g.set(3 + (q % 2), top - 1 + (q >> 1) - 1, 0, 1); } },
-  { name: "Fountain", fresh: true, uses: "-", desc: "A fountain that shoots a spray of drops up on every kick; they arc out and fall to both sides.",
-    init(st) { st.d = []; st.r = rng(17); },
-    draw(g, c, st) { g.set(3, 7, 2, 1); g.set(4, 7, 2, 1);
-      if (c.kick) for (let i = 0; i < 6; i++) st.d.push({ vx: (i - 2.5) * 1.1 + (st.r() - .5) * .4, vy: 7.5 + st.r() * 2, t: c.time, ci: i % 2 });
-      st.d = st.d.filter((d) => c.time - d.t < 1.4);
-      for (const d of st.d) { const t = c.time - d.t, y = 7 - d.vy * t + 6 * t * t; if (y <= 7.4) g.set(3.5 + d.vx * t, y, d.ci, 1); } } },
-  { name: "Goal", fresh: true, uses: "RATE", desc: "Penalties: a shot at goal on every kick while the keeper shuffles across, a pad per step. A goal lights the net.",
+  { name: "Goal", uses: "RATE", desc: "Penalties: a shot at goal on every kick while the keeper shuffles across, a pad per step. A goal lights the net.",
     init(st) { st.s = []; },
     draw(g, c, st) { for (let x = 1; x <= 6; x++) g.set(x, 0, 2, .35); for (let y = 0; y < 3; y++) { g.set(1, y, 2, .35); g.set(6, y, 2, .35); }
       const kx = 2 + tri(c.step, 2); g.set(kx, 2, 1, 1); g.set(kx + 1, 2, 1, 1);
@@ -717,17 +706,29 @@ const SCENES = [
       for (const s of st.s) { const u = (c.time - s.t) / .3;
         if (u < 1) g.set(3.5 + (s.tx - 3.5) * u, 7 - 6 * u, 0, 1);
         else for (let x = 2; x <= 5; x++) for (let y = 0; y < 2; y++) g.set(x, y, 0, 1 - (u - 1) * .55); } } },
-  { name: "Skate", fresh: true, uses: "RATE", desc: "A skater rides a halfpipe, reaching the lip on one side, then the other, on every step.",
+  { name: "Skate", uses: "RATE", desc: "A skater rides a halfpipe, reaching the lip on one side, then the other, on every step.",
     draw(g, c) { const ramp = (x) => 7 - Math.round(Math.pow(Math.abs(x - 3.5) / 3.5, 2) * 5);
       for (let x = 0; x < 8; x++) g.set(x, ramp(x), 2, .35);
       const x = 3.5 - 3.5 * Math.cos(Math.PI * (c.step + c.f)), rx = Math.max(0, Math.min(7, Math.round(x)));
       g.set(rx, ramp(rx) - 1, 0, 1); g.set(rx, ramp(rx) - 2, 1, 1); } },
-  { name: "Mow", fresh: true, uses: "RATE", desc: "A new colour is mown in row by row, back and forth like a lawnmower, once per step.",
+  { name: "Mow", uses: "RATE", desc: "A new colour is mown in row by row, back and forth like a lawnmower, once per step.",
     draw(g, c) { const n = Math.floor(c.f * 65);
       each((x, y) => { const i = y * 8 + (y % 2 ? 7 - x : x); g.set(x, y, i < n ? c.step % 3 : (c.step + 2) % 3, 1); }); } },
-  { name: "Pour", fresh: true, uses: "RATE", desc: "A new colour pours in and fills the grid from the bottom up once per step, its surface sloshing.",
+  { name: "Pour", uses: "RATE", desc: "A new colour pours in and fills the grid from the bottom up once per step, its surface sloshing.",
     draw(g, c) { const L = c.f * 8.6;
       each((x, y) => { const s = L + .7 * Math.sin(x * .9 + c.time * 6) * Math.min(1, L) * (L < 8 ? 1 : 0); g.set(x, y, 7 - y < s ? c.step % 3 : (c.step + 2) % 3, 1); }); } },
+  { name: "Ski", fresh: true, uses: "RATE", desc: "A skier slaloms down through gates that scroll past, two rows per step.",
+    draw(g, c) { const t = c.step + c.f, n = Math.floor(t * 2);
+      for (let y = 0; y < 8; y++) { const Y = y + n; if (Y % 4) continue; const x = (Y / 4) % 2 ? 5 : 1; g.set(x, y, 1, 1); g.set(x + 1, y, 0, 1); }
+      g.set(3.5 - 2.4 * Math.cos(Math.PI * (t + .5) / 2), 1, 2, 1); } },
+  { name: "Pool", fresh: true, uses: "RATE", desc: "Pool: on every step the white ball strikes the coloured ball into a corner pocket.",
+    draw(g, c) { const m = c.step % 2, X = (x) => (m ? 7 - x : x);
+      g.set(X(7), 0, 2, .5); g.set(X(0), 7, 2, .3); g.set(X(0), 0, 2, .3); g.set(X(7), 7, 2, .3);
+      const u = Math.min(1, c.f / .4), v = Math.max(0, Math.min(1, (c.f - .4) / .4));
+      g.set(X(1 + 2 * u), 6 - 2 * u, 2, 1);
+      if (v < 1) g.set(X(4 + 3 * v), 3 - 3 * v, 0, 1); else g.set(X(7), 0, 0, 1 - (c.f - .8) * 4); } },
+  { name: "Weave", fresh: true, uses: "RATE", desc: "A new colour threads in along a maze-like path that visits every pad, once per step.",
+    draw(g, c) { const n = Math.floor(c.f * 65); HILBERT.forEach(([x, y], i) => g.set(x, y, i < n ? c.step % 3 : (c.step + 2) % 3, 1)); } },
 ];
 
 /* ---------------- engine: palette, mirror, react, trail, underglow ---------------- */
