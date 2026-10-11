@@ -21,6 +21,8 @@
 #include "seq.h"
 #include "viz.h"
 
+void move_audio_fx_on_midi(void *inst, const uint8_t *msg, int len, int source);
+
 extern audio_fx_api_v2_t *move_audio_fx_init_v2(const host_api_v1_t *host);
 
 static int g_fail = 0;
@@ -245,7 +247,7 @@ static void test_midi(void) {
 static void move_note(void *v, uint8_t st, uint8_t note, uint8_t vel, int source) {
     uint8_t m[3] = { st, note, vel };
     if (source == MOVE_MIDI_SOURCE_EXTERNAL) paint_note(m);   /* Move's packet comes first */
-    api->on_midi(v, m, 3, source);
+    move_audio_fx_on_midi(v, m, 3, source);                   /* how the host calls a Master FX */
 }
 
 static uint8_t g_kept[4];

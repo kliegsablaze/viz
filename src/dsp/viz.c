@@ -561,11 +561,19 @@ static int v2_get_param(void *inst, const char *key, char *buf, int len) {
 /* Notes Move is sending out of USB-A this block (the shim hands a Master FX
  * every cable-2 MIDI_OUT note as EXTERNAL, before the ext ring is drained into
  * the same transfer). Move's own pads arrive as INTERNAL and never reach the
- * grid. */
-static void v2_on_midi(void *inst, const uint8_t *msg, int len, int source) {
+ * grid.
+ *
+ * A Master FX gets MIDI only through this exported symbol, which the host
+ * looks up by name (shadow_chain_mgmt.c:1766); the api struct's on_midi is
+ * never called for one. */
+void move_audio_fx_on_midi(void *inst, const uint8_t *msg, int len, int source) {
     viz_t *s = inst;
     if (!s || !msg || len < 3 || source != MOVE_MIDI_SOURCE_EXTERNAL) return;
     viz_sender_midi(&s->sender, msg, send_pkt, NULL);
+}
+
+static void v2_on_midi(void *inst, const uint8_t *msg, int len, int source) {
+    move_audio_fx_on_midi(inst, msg, len, source);
 }
 
 audio_fx_api_v2_t *move_audio_fx_init_v2(const host_api_v1_t *host) {

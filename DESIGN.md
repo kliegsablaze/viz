@@ -778,8 +778,10 @@ for any Note On, Note Off or CC on channels 1–6 (`Performance8x8.cpp:158-192`)
 the port. Left alone, drums blink pads under the show until the refresh comes round.
 
 Viz hears those notes as they leave. The shim scans Move's cable-2 MIDI_OUT before each
-transfer and hands every note to the Master FX `on_midi` as EXTERNAL
-(`schwung_shim.c:1478-1640`, `shadow_midi.c:430-435`). It drains the external ring
+transfer and hands every note to the Master FX as EXTERNAL (`schwung_shim.c:1478-1640`,
+`shadow_midi.c:430-435`), through the exported `move_audio_fx_on_midi`, which the host looks
+up by name (`shadow_chain_mgmt.c:1766`). The v2 struct's `on_midi` is never called for a
+Master FX; the first build filled only that, and heard nothing. It drains the external ring
 afterwards in the same function (`:7183`, `:7710`), so a packet Viz queues inside `on_midi`
 goes out **in the same USB transfer, after Move's note**. The Matrix handles both in one pass
 of its MIDI loop, before its next LED frame, so the note is never seen.
